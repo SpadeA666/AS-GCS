@@ -26,7 +26,7 @@
         <param name="super_max_vel"      type="double" value="1.0" />   <!-- XY 速度限幅 (m/s) -->
         <param name="super_max_vel_z"    type="double" value="1.0" />   <!-- Z  速度限幅 (m/s) -->
         <param name="super_max_integral" type="double" value="0.5" />   <!-- 积分抗饱和 -->
-        <param name="super_traj_timeout" type="double" value="0.5" />   <!-- SUPER断联超时→悬停 -->
+        <param name="super_traj_timeout" type="double" value="0.1" />   <!-- SUPER断联超时→悬停 -->
         <param name="super_rotate_180"   type="bool"   value="false" /> <!-- 坐标系旋转 -->
         <param name="ego_rotate_180"     type="bool"   value="false" /> <!-- ego 轨迹 180°旋转，默认 false：LIO系=PX4 local -->
         <param name="super_max_accel"    type="double" value="2.5" />   <!-- 速度指令帧间加速度限幅 (m/s^2)，0=关闭：消除换航点/新轨迹切入时的速度阶跃 -->

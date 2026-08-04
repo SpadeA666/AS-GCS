@@ -328,6 +328,34 @@ namespace fsm {
                 return;
             }
             if (machine_state_ != FOLLOW_TRAJ && machine_state_ != EMER_STOP) {
+                // zfix-super-stop: WAIT_GOAL(到达判定)后发布零速保持指令, 防止 as_navigation
+                // 在 0.5s 断供窗口内按旧轨迹中段速度(非零 ref_v)继续飞导致过冲终点
+                if (machine_state_ == WAIT_GOAL) {
+                    quadrotor_msgs::PositionCommand stop_cmd;
+                    stop_cmd.header.stamp = ros::Time::now();
+                    stop_cmd.header.frame_id = "map";
+                    stop_cmd.position.x = gi_.goal_p(0);
+                    stop_cmd.position.y = gi_.goal_p(1);
+                    stop_cmd.position.z = gi_.goal_p(2);
+                    stop_cmd.velocity.x = 0;
+                    stop_cmd.velocity.y = 0;
+                    stop_cmd.velocity.z = 0;
+                    stop_cmd.acceleration.x = 0;
+                    stop_cmd.acceleration.y = 0;
+                    stop_cmd.acceleration.z = 0;
+                    stop_cmd.jerk.x = 0;
+                    stop_cmd.jerk.y = 0;
+                    stop_cmd.jerk.z = 0;
+                    stop_cmd.angular_velocity.x = 0;
+                    stop_cmd.angular_velocity.y = 0;
+                    stop_cmd.angular_velocity.z = 0;
+                    stop_cmd.yaw = yaw_;
+                    stop_cmd.yaw_dot = 0;
+                    stop_cmd.vel_norm = 0;
+                    stop_cmd.acc_norm = 0;
+                    stop_cmd.trajectory_flag = 1;
+                    cmd_pub.publish(stop_cmd);
+                }
                 return;
             }
 
