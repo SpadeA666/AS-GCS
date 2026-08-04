@@ -27,3 +27,7 @@ src/*
 !src/spadea/
 !src/SUPER/
 cmake/protobuf-config.cmake
+
+# 调试备份文件
+*.bak_*
+*.bak
