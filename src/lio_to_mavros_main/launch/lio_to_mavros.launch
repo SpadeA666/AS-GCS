@@ -1,0 +1,14 @@
+<launch>
+    <node pkg="lio_to_mavros" type="lio_to_mavros_node" name="lio_to_mavros" output="screen">
+    <param name="odom_topic" value="/Odometry_highrate" />
+    <!-- lidar_yaw_offset: 雷达→机体的偏航角。LIO 输出机体位姿,这里 = 0,不额外旋转。 -->
+    <param name="lidar_yaw_offset" value="0" />
+    </node>
+
+    <!-- 用 MAVROS local_position/pose 发 map->base_link TF(气压计高度准确)。
+         2026-08-03: 改为 map->base_link,与 rog_map 统一;rog_map 不再广播 base_link TF,
+         保证 base_link 始终有可靠来源且只有一个父帧(map)。 -->
+    <node pkg="lio_to_mavros" type="ekf_tf_publisher_node" name="ekf_tf_publisher" output="screen">
+    <param name="pose_topic" value="/iris_0/mavros/local_position/pose" />
+    </node>
+</launch>

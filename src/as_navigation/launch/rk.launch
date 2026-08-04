@@ -1,0 +1,108 @@
+<launch>
+    <arg name="fly_height" default="0.8" />
+    <arg name="hover_low_height" default="0.8" />
+    <arg name="shot_height" default="0.8" />
+    <arg name="mission_interval" default="3" />
+    <arg name="flight_type" default="1" />
+    <arg name="is_insert_waypoint" default="false" />
+    <arg name="pub_delay" default="0" />
+    <arg name="is_auto_land" default="true" />
+    <arg name="target_area_offset_z" default="-0.5" />
+    <arg name="hover_waypoint" default="2" />   <!-- 悬停点ID (从0开始) -->
+    <arg name="descend_waypoint" default="5" /> <!-- 下降点ID (从0开始) -->
+    <arg name="goal_tolerance" default="0.5" />
+    <arg name="hovertimes" default="2.0" />
+
+    <include file="$(find navigation_2d)/launch/move_base.launch">
+    </include>
+
+    <node pkg="navigation_2d" type="rk_node" name="rk_node" output="screen">
+        <param name="fly_height" value="$(arg fly_height)" />
+        <param name="hover_low_height" value="$(arg hover_low_height)" />
+        <param name="shot_height" value="$(arg shot_height)" />
+        <param name="target_area_offset_z" value="$(arg target_area_offset_z)" />
+        <param name="mission_interval" value="$(arg mission_interval)" />
+        <param name="hovertimes" value="$(arg hovertimes)" />
+        <param name="pub_rate" value="15" />
+        <param name="flight_type" value="$(arg flight_type)" />
+        <param name="pub_delay" value="$(arg pub_delay)" />
+
+        <param name="goal_tolerance" value="$(arg goal_tolerance)" />
+
+        <param name="detect_times" value="40" />
+
+        <param name="is_auto_land" value="$(arg is_auto_land)" />
+
+        <param name="is_insert_waypoint" value="$(arg is_insert_waypoint)" />
+        <param name="point_num" value="2" />
+
+        <param name="hover_waypoint" value="$(arg hover_waypoint)" />
+        <param name="descend_waypoint" value="$(arg descend_waypoint)" />
+
+        <param name="point0_x" value="6" />
+        <param name="point0_y" value="0" />
+
+        <param name="point1_x" value="6" />
+        <param name="point1_y" value="4" />
+        
+        
+        
+        <!-- <param name="point0_x" value="1.5" />
+        <param name="point0_y" value="-0.2" />
+
+        <param name="point1_x" value="3.0" />
+        <param name="point1_y" value="-0.35" />
+
+        <param name="point0_x" value="2.75" />
+        <param name="point0_y" value="-0.2" /> 
+
+        <param name="point2_x" value="4.0" />
+        <param name="point2_y" value="0.2" />
+
+        <param name="point3_x" value="3.3" />
+        <param name="point3_y" value="1.3" />
+
+        <param name="point4_x" value="2.3" />
+        <param name="point4_y" value="2.5" />
+
+        <param name="point5_x" value="3.75" />
+        <param name="point5_y" value="3.5" />
+
+        <param name="point6_x" value="2" />
+        <param name="point6_y" value="2.7" />
+
+        <param name="point7_x" value="1" />
+        <param name="point7_y" value="2.7" />         
+
+        <param name="point7_x" value="1" />
+        <param name="point7_y" value="1.95" />          
+
+        <param name="point7_x" value="1" />
+        <param name="point7_y" value="3.6" />   
+
+        <param name="point8_x" value="2.6" />
+        <param name="point8_y" value="2.5" />
+
+        <param name="point9_x" value="3.5" />
+        <param name="point9_y" value="1.3" />
+
+        <param name="point10_x" value="3.5" />
+        <param name="point10_y" value="-0.2" />
+
+        <param name="point11_x" value="1.5" />
+        <param name="point11_y" value="0" />
+
+        <param name="point10_x" value="3.4" />
+        <param name="point10_y" value="-0.2" /> 
+
+        <param name="point12_x" value="0" />
+        <param name="point12_y" value="0" /> 
+
+
+
+    <node name="rqt_image_view" pkg="rqt_image_view" type="rqt_image_view" output="screen"/>  -->
+    </node>
+
+    <node pkg="rviz" type="rviz" name="rviz" required="true"
+          args="-d $(find navigation_2d)/rviz/ros_navigation.rviz"/>
+</launch>

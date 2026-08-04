@@ -1,0 +1,29 @@
+# catkin build 产物
+build/
+devel/
+logs/
+.catkin_tools/
+.catkin_workspace
+
+# Python
+__pycache__/
+*.pyc
+
+# 编译中间产物
+*.o
+*.a
+
+# 编辑器/系统
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# 只保留核心包（白名单）
+src/*
+!src/as_navigation/
+!src/ego_planner/
+!src/lio_to_mavros_main/
+!src/spadea/
+!src/SUPER/
+cmake/protobuf-config.cmake
