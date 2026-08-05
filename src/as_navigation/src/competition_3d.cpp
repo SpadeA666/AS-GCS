@@ -79,7 +79,7 @@ int main(int argc, char** argv)
 
 
         case 1:  //阶段1：导航到避障区
-            if (uav.navigationSuper(-2.30f, 0.0f, uav.fly_height, NAN, 0.2f))
+            if (uav.navigationSuper(-2.30f, 0.0f, uav.fly_height, NAN, 0.3f))
             {
                 ROS_WARN("完成！！！");
                 mission_num = 2;
@@ -87,7 +87,7 @@ int main(int argc, char** argv)
             break;
 
         case 2:  //阶段2：导航出避障区，准备投放打靶
-            if (uav.navigationSuper(-1.96f, -2.5f, uav.fly_height, NAN, 0.2f))
+            if (uav.navigationSuper(-1.96f, -2.5f, uav.fly_height, NAN, 0.3f))
             {
                 ROS_WARN("完成！！！");
                 mission_num = 3;

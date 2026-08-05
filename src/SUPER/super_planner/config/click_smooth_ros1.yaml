@@ -1,7 +1,7 @@
 fsm:
   click_goal_en: true
   click_goal_topic: "/move_base_simple/goal"
-  click_height: 0.6   # 2026-08-03: 原1.5太高,打点目标落在未建图的高空,走廊生成失败。改为与飞行高度一致
+  click_height: 0.5   # zfix: 与飞行高度一致, 消除到点高度偏差(参考z停在0.65)
   click_yaw_en: true
   replan_rate: 15.0
   cmd_topic: "/planning/pos_cmd"
@@ -40,8 +40,8 @@ traj_opt:
     print_optimizer_log: false
 
   boundary:
-    max_vel: 1.5
-    max_acc: 1.9
+    max_vel: 1.0
+    max_acc: 1.5
     max_jerk: 120.0
     max_omg: 5.0
     max_acc_thr: 20.0

@@ -230,6 +230,9 @@ class ASNAV
     double last_super_vx_;            // 上一帧速度指令（斜率限制用）
     float super_slew_timer_ = 0.0f;   // >0 时启用 slewLimit（新目标/换点瞬间，正常跟踪旁路）
     bool super_pos_hold_ = false;     // SUPER 到点位置保持（仿 ruikang HOVER：收敛交给 PX4）
+    double super_hold_px_ = 0.0;      // 位置保持锁存点(参考跳动时锁定, 不跟跳动参考)
+    double super_hold_py_ = 0.0;
+    double super_hold_pz_ = 0.0;
     int super_pos_hold_frames_ = 0;   // 到点判定防抖帧计数
     bool ego_pos_hold_ = false;       // EGO 到点位置保持
     int ego_pos_hold_frames_ = 0;     // 到点判定防抖帧计数

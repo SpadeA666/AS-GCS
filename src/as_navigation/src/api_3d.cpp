@@ -1289,15 +1289,26 @@ bool ASNAV::navigationSuper(float x, float y, float z, float yaw, float tol)
     {
         double ref_spd = std::sqrt(ref_vx * ref_vx + ref_vy * ref_vy + ref_vz * ref_vz);
         double dist_ref = std::sqrt(err_x * err_x + err_y * err_y + err_z * err_z);
-        if (ref_spd < 0.05 && dist_ref < 0.3)
+        if (super_pos_hold_)
         {
+            // zfix-hold: 保持中, 参考明显重新移动(新轨迹)才退出
+            if (ref_spd > 0.5) super_pos_hold_ = false;
+        }
+        else if (ref_spd < 0.1 && dist_ref < 0.5)
+        {
+            // zfix-hold: 参考接近静止 → 锁存当前位置为保持点(不跟跳动的 ref)
             if (super_pos_hold_frames_ < 100) super_pos_hold_frames_++;
-            if (super_pos_hold_frames_ > 10) super_pos_hold_ = true;   // 10帧防抖(~0.2s@50Hz)
+            if (super_pos_hold_frames_ > 5)
+            {
+                super_pos_hold_ = true;
+                super_hold_px_ = current_position.x;
+                super_hold_py_ = current_position.y;
+                super_hold_pz_ = current_position.z;
+            }
         }
         else
         {
             super_pos_hold_frames_ = 0;
-            super_pos_hold_ = false;
         }
     }
     if (super_pos_hold_)
@@ -1314,9 +1325,9 @@ bool ASNAV::navigationSuper(float x, float y, float z, float yaw, float tol)
             mavros_msgs::PositionTarget::FORCE |
             mavros_msgs::PositionTarget::IGNORE_YAW_RATE |
             (yaw_hold ? mavros_msgs::PositionTarget::IGNORE_YAW : 0);
-        target_position.position.x = ref_px;
-        target_position.position.y = ref_py;
-        target_position.position.z = ref_pz;
+        target_position.position.x = super_hold_px_;
+        target_position.position.y = super_hold_py_;
+        target_position.position.z = super_hold_pz_;
         target_position.velocity.x = 0;
         target_position.velocity.y = 0;
         target_position.velocity.z = 0;
@@ -1372,9 +1383,10 @@ bool ASNAV::navigationSuper(float x, float y, float z, float yaw, float tol)
         return false;
 
     float dist = tolerance(x, y, z);
-    const float kDebounceTime = 0.15f;
+    const float kDebounceTime = 0.15f;    // zfix-hold: SUPER receding-horizon 轨迹末端振荡, 飞机停稳点约 0.27m
+    const float kArriveTol = std::max(tol, 0.3f);   // zfix-hold: 放宽到达判定, 原 tol=0.2 几乎不满足
 
-    if (dist < tol)
+    if (dist < kArriveTol)
     {
         if (!super_tol_timing_)
         {
