@@ -228,6 +228,11 @@ class ASNAV
     // 航点切换平顺化（2026-08 修复）
     ros::Time super_goal_time_;       // 最近一次发布 SUPER 目标的时刻（刷新超时计时 + 新鲜轨迹判定）
     double last_super_vx_;            // 上一帧速度指令（斜率限制用）
+    float super_slew_timer_ = 0.0f;   // >0 时启用 slewLimit（新目标/换点瞬间，正常跟踪旁路）
+    bool super_pos_hold_ = false;     // SUPER 到点位置保持（仿 ruikang HOVER：收敛交给 PX4）
+    int super_pos_hold_frames_ = 0;   // 到点判定防抖帧计数
+    bool ego_pos_hold_ = false;       // EGO 到点位置保持
+    int ego_pos_hold_frames_ = 0;     // 到点判定防抖帧计数
     double last_super_vy_;
     double last_super_vz_;
 

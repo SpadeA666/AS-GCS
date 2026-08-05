@@ -866,6 +866,16 @@ bool ASNAV::followEgo()
     double vel_err_x = ego_cmd_.velocity.x - current_velocity.x;
     double vel_err_y = ego_cmd_.velocity.y - current_velocity.y;
 
+    // ====== 新轨迹检测：ego replan 后 trajectory_id 变化 → 清积分 + 退出位置保持 ======
+    if (ego_cmd_.trajectory_id != zplus_last_traj_id_)
+    {
+        zplus_last_traj_id_ = ego_cmd_.trajectory_id;
+        integral_zpx_ = 0.0;
+        integral_zpy_ = 0.0;
+        ego_pos_hold_ = false;
+        ego_pos_hold_frames_ = 0;
+    }
+
     // ====== 无条件积分（固定步长 0.02，与 navigationZplus 一致）======
     integral_zpx_ += err_x * 0.02;
     integral_zpy_ += err_y * 0.02;
@@ -890,6 +900,46 @@ bool ASNAV::followEgo()
         double scale = zplus_max_vel_ / speed;
         vx_cmd *= scale;
         vy_cmd *= scale;
+    }
+
+    // ====== 到点位置保持（zfix-smooth: 仿 ruikang HOVER）======
+    // EGO 轨迹末端参考静止+距离近 → 切位置模式, 把最后收敛交给 PX4 位置环,
+    // 消除速度模式下外环积分+滞后的慢摆; 新轨迹到达(trajectory_id 变化)自动退出
+    {
+        double ref_spd = std::sqrt(ego_cmd_.velocity.x * ego_cmd_.velocity.x +
+                                   ego_cmd_.velocity.y * ego_cmd_.velocity.y);
+        double dist_ref = std::sqrt(err_x * err_x + err_y * err_y);
+        if (ref_spd < 0.05 && dist_ref < 0.3)
+        {
+            if (ego_pos_hold_frames_ < 100) ego_pos_hold_frames_++;
+            if (ego_pos_hold_frames_ > 10) ego_pos_hold_ = true;   // 10帧防抖(~0.2s@50Hz)
+        }
+        else
+        {
+            ego_pos_hold_frames_ = 0;
+            ego_pos_hold_ = false;
+        }
+    }
+    if (ego_pos_hold_)
+    {
+        target_position.header.stamp = now;
+        target_position.coordinate_frame =
+            mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
+        target_position.type_mask =
+            mavros_msgs::PositionTarget::IGNORE_VX |
+            mavros_msgs::PositionTarget::IGNORE_VY |
+            mavros_msgs::PositionTarget::IGNORE_VZ |
+            mavros_msgs::PositionTarget::IGNORE_AFX |
+            mavros_msgs::PositionTarget::IGNORE_AFY |
+            mavros_msgs::PositionTarget::IGNORE_AFZ |
+            mavros_msgs::PositionTarget::FORCE |
+            mavros_msgs::PositionTarget::IGNORE_YAW_RATE;
+        target_position.position.x = ego_cmd_.position.x;
+        target_position.position.y = ego_cmd_.position.y;
+        target_position.position.z = ego_cmd_.position.z;
+        target_position.velocity.x = 0;
+        target_position.velocity.y = 0;
+        return false;
     }
 
     // ====== 构建 MAVROS 消息（与 navigationZplus 对齐）======
@@ -1113,6 +1163,9 @@ bool ASNAV::navigationSuper(float x, float y, float z, float yaw, float tol)
         last_super_vx_ = current_velocity.x;
         last_super_vy_ = current_velocity.y;
         last_super_vz_ = current_velocity.z;
+        super_slew_timer_ = 0.3f;      // zfix-smooth: 新目标后短暂限幅窗口, 消除换点抽动
+        super_pos_hold_ = false;       // zfix-smooth: 新目标退出位置保持
+        super_pos_hold_frames_ = 0;
         ROS_INFO("[Super] 新目标 (%.2f, %.2f, %.2f) → 已发布到 /move_base_simple/goal", x, y, z);
     }
 
@@ -1131,6 +1184,8 @@ bool ASNAV::navigationSuper(float x, float y, float z, float yaw, float tol)
 
     if (!super_cmd_received_ || traj_timeout || !fresh_cmd)
     {
+        super_pos_hold_ = false;       // zfix-smooth: 断供/超时退出位置保持
+        super_pos_hold_frames_ = 0;
         if (traj_timeout)
             ROS_WARN_THROTTLE(1.0,
                 "[Super] Traj timeout! dt=%.2fs > %.2fs → HOLD",
@@ -1211,10 +1266,62 @@ bool ASNAV::navigationSuper(float x, float y, float z, float yaw, float tol)
     // ====== Z 速度限幅 ======
     vz_cmd = std::max(-(double)super_max_vel_z_, std::min(vz_cmd, (double)super_max_vel_z_));
 
-    // ====== 帧间加速度斜率限制（2026-08 修复）======
-    // 消除换 case、SUPER 新轨迹切入、超时保持进出瞬间的速度阶跃
-    slewLimitVel(vx_cmd, vy_cmd, vz_cmd,
-                 last_super_vx_, last_super_vy_, last_super_vz_, dt, super_max_accel_);
+    // ====== 帧间加速度斜率限制（zfix-smooth: 条件化）======
+    // 仅在新目标/换点后的短暂窗口(super_slew_timer_)内限幅, 正常跟踪旁路——
+    // 持续限幅会与 kv 阻尼竞争, 在到点附近制造慢摆(极限环)
+    if (super_slew_timer_ > 0.0f)
+    {
+        super_slew_timer_ -= dt;
+        slewLimitVel(vx_cmd, vy_cmd, vz_cmd,
+                     last_super_vx_, last_super_vy_, last_super_vz_, dt, super_max_accel_);
+    }
+    else
+    {
+        last_super_vx_ = vx_cmd;
+        last_super_vy_ = vy_cmd;
+        last_super_vz_ = vz_cmd;
+    }
+
+    // ====== 到点位置保持（zfix-smooth: 仿 ruikang HOVER）======
+    // SUPER 到达后(WAIT_GOAL)发零速指令: 参考静止+距离近 → 切位置模式,
+    // 把最后收敛交给 PX4 位置环, 消除速度模式下外环积分+滞后的慢摆
+    if (super_rviz_mode_)
+    {
+        double ref_spd = std::sqrt(ref_vx * ref_vx + ref_vy * ref_vy + ref_vz * ref_vz);
+        double dist_ref = std::sqrt(err_x * err_x + err_y * err_y + err_z * err_z);
+        if (ref_spd < 0.05 && dist_ref < 0.3)
+        {
+            if (super_pos_hold_frames_ < 100) super_pos_hold_frames_++;
+            if (super_pos_hold_frames_ > 10) super_pos_hold_ = true;   // 10帧防抖(~0.2s@50Hz)
+        }
+        else
+        {
+            super_pos_hold_frames_ = 0;
+            super_pos_hold_ = false;
+        }
+    }
+    if (super_pos_hold_)
+    {
+        target_position.header.stamp = now;
+        target_position.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
+        target_position.type_mask =
+            mavros_msgs::PositionTarget::IGNORE_VX |
+            mavros_msgs::PositionTarget::IGNORE_VY |
+            mavros_msgs::PositionTarget::IGNORE_VZ |
+            mavros_msgs::PositionTarget::IGNORE_AFX |
+            mavros_msgs::PositionTarget::IGNORE_AFY |
+            mavros_msgs::PositionTarget::IGNORE_AFZ |
+            mavros_msgs::PositionTarget::FORCE |
+            mavros_msgs::PositionTarget::IGNORE_YAW_RATE |
+            (yaw_hold ? mavros_msgs::PositionTarget::IGNORE_YAW : 0);
+        target_position.position.x = ref_px;
+        target_position.position.y = ref_py;
+        target_position.position.z = ref_pz;
+        target_position.velocity.x = 0;
+        target_position.velocity.y = 0;
+        target_position.velocity.z = 0;
+        return false;
+    }
 
     // ====== 构建 MAVROS 消息（全速度模式：XYZ 速度 + 忽略位置） ======
     target_position.header.stamp = now;

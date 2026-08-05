@@ -20,8 +20,8 @@
 
 
         <!-- navigationSuper 控制器参数 -->
-        <param name="super_kp_outer"     type="double" value="1.6" />   <!-- Kp: 位置误差→速度修正 -->
-        <param name="super_kv_outer"     type="double" value="1.4" />   <!-- Kv: 速度误差阻尼（核心） -->
+        <param name="super_kp_outer"     type="double" value="2.4" />   <!-- Kp: 位置误差→速度修正 -->
+        <param name="super_kv_outer"     type="double" value="1.9" />   <!-- Kv: 速度误差阻尼（核心） -->
         <param name="super_ki_outer"     type="double" value="0.3" />   <!-- Ki: 位置误差积分 -->
         <param name="super_max_vel"      type="double" value="1.0" />   <!-- XY 速度限幅 (m/s) -->
         <param name="super_max_vel_z"    type="double" value="1.0" />   <!-- Z  速度限幅 (m/s) -->

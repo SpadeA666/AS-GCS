@@ -40,8 +40,8 @@ traj_opt:
     print_optimizer_log: false
 
   boundary:
-    max_vel: 1.0
-    max_acc: 1.5
+    max_vel: 1.5
+    max_acc: 1.9
     max_jerk: 120.0
     max_omg: 5.0
     max_acc_thr: 20.0
