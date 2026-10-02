@@ -2161,7 +2161,7 @@ void ASNAV::setpointPublish()
         mavros_setpoint_raw_local_pub_.publish(target_position);
 }
 // 设置飞行模式函数
-void ASNAV::set_mode(string mode)
+void ASNAV::set_mode(std::string mode)
 {
     mavros_msgs::SetMode mode_msg;
     mode_msg.request.custom_mode = mode;

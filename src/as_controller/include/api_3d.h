@@ -21,8 +21,6 @@
 
 #include <actionlib/client/simple_action_client.h> 
 
-#include "lib_library.h"
-
 
 class ASNAV
 {
@@ -46,7 +44,7 @@ class ASNAV
     bool flyDown(float descend_z);
     bool flyUp(float height);
     void setpointPublish();
-    void set_mode(string mode);
+    void set_mode(std::string mode);
     bool autoLand();
     bool trackYoloDown(float max_distance = 0.35f, int tol = 30);
     bool trackYoloForward(float Kp_x, float Kp_y, float Kp_z, float target_box_height, int tol_xy, int tol_size);
@@ -55,7 +53,7 @@ class ASNAV
     // 三通道 PWM 舵机控制接口（复刻 lib_pwm_control，M5/M6/M7，参数 0~100 占空比）
     // 循环发送 + setpointPublish() 维持 OFFBOARD
     // pwm_channel_7 默认 50（中位）：只传两个参数时 M7 输出中位，行为与原 lib_pwm_control 一致
-    bool pwmControl(int pwm_channel_5, int pwm_channel_6, int pwm_channel_7 = 0);
+    bool pwmControl(int pwm_channel_5, int pwm_channel_6, int pwm_channel_7 = 50);
     bool putShoot(float x, float y, float z, float yaw, float tol);
     bool putShootSimple(float x, float y, float z, float yaw, float tol);
     // 2026-08-26: 同 putShootSimple, 但打靶点按阶段0识别的字母动态选择: A->y=-1.7, B->y=-2.7
@@ -64,7 +62,7 @@ class ASNAV
 
     struct yoloBox
     {
-        string Class;
+        std::string Class;
         float cameraXCenter, cameraYCenter;
         float boxHeight;
     };
