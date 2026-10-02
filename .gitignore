@@ -21,7 +21,7 @@ __pycache__/
 
 # 只保留核心包（白名单）
 src/*
-!src/as_navigation/
+!src/as_controller/
 !src/ego_planner/
 !src/lio_to_mavros_main/
 !src/spadea/
