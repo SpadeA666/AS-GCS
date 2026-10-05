@@ -27,7 +27,7 @@ int main(int argc, char** argv)
     ros::NodeHandle nh_;
 
     ASNAV uav(nh_);
-    ros::Rate rate(50);  // 50Hz: 与 ruikang 一致，PD外环需要高频更新保证速度阻尼效果
+    ros::Rate rate(50);  // 50Hz: PD外环需要高频更新保证速度阻尼效果
      
     // static constexpr float fly_height = 0.5f, descend_z = 0.3f;
 
@@ -167,7 +167,7 @@ int main(int argc, char** argv)
             break;
         
         default:
-            ROS_WARN("未知任务阶段：%d", mission_num);
+            ROS_WARN_THROTTLE(2.0, "未知任务阶段：%d", mission_num);
             break;
         }
 
