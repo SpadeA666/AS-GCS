@@ -1,3 +1,23 @@
+/*
+ *  ╔══════════════════════════════════════════════════════════════╗
+ *  ║                                                              ║
+ *  ║     ███████╗ ██████╗  █████╗ ██████╗ ███████╗ █████╗         ║
+ *  ║     ██╔════╝ ██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔══██╗        ║
+ *  ║     ███████╗ ██████╔╝███████║██║  ██║█████╗  ███████║        ║
+ *  ║     ╚════██║ ██╔═══╝ ██╔══██║██║  ██║██╔══╝  ██╔══██║        ║
+ *  ║     ███████║ ██║     ██║  ██║██████╔╝███████╗██║  ██║        ║
+ *  ║     ╚══════╝ ╚═╝     ╚═╝  ╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝        ║
+ *  ║                                                              ║
+ *  ║     Author    : SpadeA                                       ║
+ *  ║     School    : SWPU                                         ║
+ *  ║     QQ        : 3402442153                                   ║
+ *  ║                                                              ║
+ *  ║     ✨ 欢迎交流讨论，有问题或建议欢迎随时联系！ ✨                 ║
+ *  ║     Feel free to reach out for questions or suggestions!     ║
+ *  ║                                                              ║
+ *  ╚══════════════════════════════════════════════════════════════╝
+ */
+
 #include "api_3d.h"
 
 inline float normalize_angle(float angle) {
@@ -44,6 +64,14 @@ ASNAV::ASNAV(ros::NodeHandle& nh) : nh_(nh)
     nh_private.param<float>("super_max_vel_z", super_max_vel_z_, 1.0f);
     nh_private.param<float>("super_max_integral", super_max_integral_, 0.5f);
     nh_private.param<float>("super_traj_timeout", super_traj_timeout_, 0.5f);
+
+    // 轮廓控制（contouring control）参数（2026-10-08）
+    // enable=false 时 navigationSuper 完全走原各向同性控制律，行为与改动前一致
+    nh_private.param<bool>("super_contour_enable", super_contour_enable_, false);
+    nh_private.param<float>("super_contour_kp_t", super_contour_kp_t_, 0.6f);
+    nh_private.param<float>("super_contour_kp_n", super_contour_kp_n_, 1.6f);
+    nh_private.param<float>("super_contour_ff_t", super_contour_ff_t_, 0.9f);
+    nh_private.param<float>("super_contour_min_spd", super_contour_min_spd_, 0.15f);
 
     
     // 初始化订阅和发布
@@ -120,7 +148,7 @@ bool ASNAV::takeoff(float height)
         rate.sleep();
     }
 
-    position(0.0f, 0.0f, height, 0.0f, 0.15f);
+    position(0.0f, 0.0f, height, current_yaw, 0.15f);
 
     for(int i = 0; i < 100 && ros::ok() ; ++i)
     {
@@ -146,7 +174,7 @@ bool ASNAV::takeoff(float height)
             is_offboard = false;
         }
      }
-    if (std::fabs(current_position.z - height) < 0.25f)
+    if (std::fabs(current_position.z - height) < 0.15f)
     {
         ROS_INFO("已达到目标高度: %.2f m", height);
         return true;
@@ -186,7 +214,7 @@ bool ASNAV::position(float x, float y, float z, float yaw, float tol)
     target_position.position.x = x;
     target_position.position.y = y;
     target_position.position.z = z;
-    target_position.yaw = 0.0f;
+    target_position.yaw = yaw;
     return tolerance(x, y, z) < tol;
 }
 //位置平滑接口
@@ -413,8 +441,9 @@ bool ASNAV::navigationEgo(float x, float y, float z, float yaw, float tol, bool 
         goal.header.frame_id = "map";
         goal.pose.position.x = x;
         goal.pose.position.y = y;
+        // 同上：goal 是任务目标，一律用用户传进来的值。
         goal.pose.position.z = z;
-        goal.pose.orientation = tf::createQuaternionMsgFromYaw(0.0f);
+        goal.pose.orientation = tf::createQuaternionMsgFromYaw(yaw_cmd);
         goal_pub_.publish(goal);
 
         goal_sent_ = true;
@@ -654,8 +683,14 @@ bool ASNAV::navigationSuper(float x, float y, float z, float yaw, float tol, boo
         goal.header.frame_id = "map";
         goal.pose.position.x = x;
         goal.pose.position.y = y;
+        // 注意两层语义要分开：
+        //   ① goal 里带什么 = 【任务目标】—— 不管谁执行，目标就是用户指定的那个
+        //   ② nav_mode 的 use_z/use_yaw = 【谁来执行】—— 规划器轨迹 or 直接控制
+        // 所以这里 z / yaw 一律用用户传进来的值。
+        // （曾经写成 use_yaw ? current_yaw : yaw_cmd，结果是“yaw 交给规划器”时
+        //   目标反被设成当前机头，飞机永不偏航 —— 方向弄反了。）
         goal.pose.position.z = z;
-        goal.pose.orientation = tf::createQuaternionMsgFromYaw(0.0f);
+        goal.pose.orientation = tf::createQuaternionMsgFromYaw(yaw_cmd);
         super_goal_pub_.publish(goal);
 
         super_goal_sent_ = true;
@@ -796,8 +831,41 @@ bool ASNAV::navigationSuper(float x, float y, float z, float yaw, float tol, boo
     integral_spy_ = std::max(-(double)super_max_integral_, std::min(integral_spy_, (double)super_max_integral_));
     integral_spz_ = std::max(-(double)super_max_integral_, std::min(integral_spz_, (double)super_max_integral_));
 
-    double vx = super_kp_outer_ * ex + super_kv_outer_ * dvx + super_ki_outer_ * integral_spx_ + super_ff_gain_ * super_cmd_.velocity.x;
-    double vy = super_kp_outer_ * ey + super_kv_outer_ * dvy + super_ki_outer_ * integral_spy_ + super_ff_gain_ * super_cmd_.velocity.y;
+    // ====== (C2) 轮廓控制分支（contouring control, 2026-10-08）======
+    // 任务坐标系：t̂ 沿轨迹切向，n̂ 为左法向
+    //   切向 e_t = 滞后误差 lag error      → 放松增益 + 强前馈，保推进速度
+    //   法向 e_n = 轮廓误差 contour error → 收紧增益，紧贴规划轨迹
+    // 参考：Koren 1980 CCC；2001 TCST "task coordinate frame"；CMPCC / MPCC++
+    double vx, vy;
+    const double vref_xy = std::hypot((double)super_cmd_.velocity.x, (double)super_cmd_.velocity.y);
+    if ((super_contour_active_ || super_contour_enable_) && vref_xy > (double)super_contour_min_spd_)
+    {
+        const double tx = super_cmd_.velocity.x / vref_xy;   // 切向单位向量
+        const double ty = super_cmd_.velocity.y / vref_xy;
+        const double nx = -ty, ny = tx;                       // 法向（左正交）
+
+        const double e_t  = ex * tx + ey * ty;                // 滞后
+        const double e_n  = ex * nx + ey * ny;                // 轮廓
+        const double dv_t = dvx * tx + dvy * ty;
+        const double dv_n = dvx * nx + dvy * ny;
+        // 积分投影到任务坐标系（复用全局积分量，不新增复位点；ki=0 时无影响）
+        const double i_t  = integral_spx_ * tx + integral_spy_ * ty;
+        const double i_n  = integral_spx_ * nx + integral_spy_ * ny;
+
+        const double v_t = super_contour_kp_t_ * e_t + super_kv_outer_ * dv_t
+                         + super_ki_outer_ * i_t + super_contour_ff_t_ * vref_xy;
+        const double v_n = super_contour_kp_n_ * e_n + super_kv_outer_ * dv_n
+                         + super_ki_outer_ * i_n;
+
+        vx = v_t * tx + v_n * nx;                             // 合成回全局系
+        vy = v_t * ty + v_n * ny;
+    }
+    else
+    {
+        // 原各向同性控制律（全局系 X/Y 同一套增益），以及参考速率过低时的退化分支
+        vx = super_kp_outer_ * ex + super_kv_outer_ * dvx + super_ki_outer_ * integral_spx_ + super_ff_gain_ * super_cmd_.velocity.x;
+        vy = super_kp_outer_ * ey + super_kv_outer_ * dvy + super_ki_outer_ * integral_spy_ + super_ff_gain_ * super_cmd_.velocity.y;
+    }
     double vz = super_kp_outer_ * ez + super_kv_outer_ * dvz + super_ki_outer_ * integral_spz_ + super_ff_gain_z_ * super_cmd_.velocity.z;
 
     // XY 速度幅值限幅
@@ -941,6 +1009,46 @@ bool ASNAV::navigationSuperRviz(int nav_mode)
         // rviz 模式下 x/y 参数被忽略（不发 goal、不判到达）；
         // z/yaw 作为「锁定值」传入：nav_mode 开放对应轴时它们不被使用
         navigationSuper(0.0f, 0.0f, fly_height, 0.0f, 0.2f, false, nav_mode);
+        setpointPublish();
+        ros::spinOnce();
+        rate.sleep();
+    }
+
+    super_rviz_mode_ = false;
+    return false;   // 永不返回 true
+}
+
+// ====== navigationSuperContour: 轮廓控制（contouring control）变体（2026-10-08 新增）======
+// 与 navigationSuper 完全同构：复用其 goal 发布 / 轨迹超时锁存 / 到达判定 / yaw 收尾，
+// 仅把 XY 速度控制律换成任务坐标系的切向/法向分解（见 navigationSuper 的 (C2) 分支）。
+//   切向（滞后 lag error）：放松增益 + 强前馈，保推进速度
+//   法向（轮廓 contour error）：收紧增益，紧贴规划轨迹
+bool ASNAV::navigationSuperContour(float x, float y, float z, float yaw, float tol, bool stop_at_goal, int nav_mode)
+{
+    const bool saved = super_contour_active_;   // 仅本次调用生效，不污染 navigationSuper
+    super_contour_active_ = true;
+    const bool ret = navigationSuper(x, y, z, yaw, tol, stop_at_goal, nav_mode);
+    super_contour_active_ = saved;
+    return ret;
+}
+
+// ====== navigationSuperContourRviz: 轮廓控制律的 rviz 打点测试接口（对照 navigationSuperRviz）======
+bool ASNAV::navigationSuperContourRviz(int nav_mode)
+{
+    ROS_INFO("[SuperContourRviz] 只接收 rviz 打点，跟踪 SUPER 轨迹（轮廓控制律）...");
+    ros::Rate rate(50.0);
+
+    super_rviz_mode_ = true;
+    super_cmd_received_ = false;   // 重新等一个 rviz 点触发的轨迹
+    integral_spx_ = 0.0;
+    integral_spy_ = 0.0;
+    integral_spz_ = 0.0;
+    super_hold_active_ = false;
+
+    while (ros::ok())
+    {
+        // 同 navigationSuperRviz：x/y 被忽略，z/yaw 作为锁定值传入
+        navigationSuperContour(0.0f, 0.0f, fly_height, 0.0f, 0.2f, false, nav_mode);
         setpointPublish();
         ros::spinOnce();
         rate.sleep();
@@ -1324,6 +1432,13 @@ void ASNAV::reset_target()
     target_position.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
     
     ROS_INFO("指令对象已重置，消除残留数据");
+}
+
+// 声明“这是一个新目标”：让 navigationSuper 下次调用时重新发布 goal。
+// 不加这个，飞机飞向 A 的中途改打 B，goal 不会重发，B 永远不会生效。
+void ASNAV::resetSuperGoal()
+{
+    super_goal_sent_ = false;
 }
 
 // 三通道 PWM 舵机控制接口（复刻 lib_pwm_control，支持 M5/M6/M7）

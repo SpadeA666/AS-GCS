@@ -1,0 +1,5 @@
+# 软件急停（三层急停的第 2 层）。独立于规划器与链路健康检查。
+string action    # hover | land | rtl
+---
+bool success
+string message

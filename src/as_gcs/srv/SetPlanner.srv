@@ -1,0 +1,5 @@
+# 切换规划器。网关据此改订阅的轨迹话题、改打点的 goal 话题
+string planner    # ego | super
+---
+bool success
+string message

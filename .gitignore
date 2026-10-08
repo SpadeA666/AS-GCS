@@ -26,7 +26,13 @@ src/*
 !src/lio_to_mavros_main/
 !src/spadea/
 !src/SUPER/
+!src/as_gcs/
 cmake/protobuf-config.cmake
+
+# 地面站前端的依赖与构建产物（node_modules 156MB，不入库）
+src/as_gcs/ui/node_modules/
+src/as_gcs/ui/dist/
+src/as_gcs/ui/.vite/
 
 # 调试备份文件
 *.bak_*

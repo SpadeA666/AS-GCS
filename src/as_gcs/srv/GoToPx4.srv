@@ -1,0 +1,7 @@
+# 直接给 PX4 local 系下发位置控制点（对应 ASNAV::position）
+geometry_msgs/Point position
+float32 yaw
+float32 tol
+---
+bool success
+string message

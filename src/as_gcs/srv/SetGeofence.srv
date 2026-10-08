@@ -1,0 +1,8 @@
+# 3D 安全区：2D 多边形（棱柱底面）+ 高度上下限。区外禁飞由 ROS 侧强制。
+geometry_msgs/Point[] polygon   # 顶点序列，z 分量忽略
+float32 z_min
+float32 z_max
+bool enable
+---
+bool success
+string message

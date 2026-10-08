@@ -1,0 +1,6 @@
+# YOLO 开关。具体跑哪个 launch 由当前相机模式决定，调用方不需要（也不该）指定。
+bool enable
+---
+bool success
+string message
+string launch_file

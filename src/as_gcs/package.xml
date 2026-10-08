@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>as_gcs</name>
+  <version>0.1.0</version>
+  <description>无人机地面站 ROS 侧：消息定义、网关、设备管理</description>
+  <maintainer email="spadea@todo.todo">SpadeA</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>message_generation</build_depend>
+  <build_depend>actionlib_msgs</build_depend>
+
+  <exec_depend>message_runtime</exec_depend>
+  <exec_depend>actionlib_msgs</exec_depend>
+
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
+</package>

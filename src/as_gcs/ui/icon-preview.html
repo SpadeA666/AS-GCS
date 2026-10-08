@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>AS 地面站 · 图标预览</title>
+<style>
+  body { margin:0; padding:40px; background:#0b0e12; color:#c8d0da;
+         font:14px/1.6 -apple-system,"Noto Sans CJK SC","Microsoft YaHei",sans-serif; }
+  h1 { font-size:16px; font-weight:600; margin:0 0 4px; color:#e6ecf3; }
+  p  { margin:0 0 26px; color:#7d8794; font-size:13px; }
+  .row { display:flex; align-items:flex-end; gap:34px; flex-wrap:wrap;
+         padding:24px 28px; background:#12161b; border:1px solid #232a33;
+         border-radius:10px; margin-bottom:20px; }
+  .item { text-align:center; }
+  .item .cap { margin-top:9px; font-size:11px; color:#6b7684;
+               font-family:ui-monospace,monospace; }
+  .onlight { background:#e8ecf1; border-color:#cfd6de; }
+  .onlight .cap { color:#5a636e; }
+  img { display:block; }
+</style>
+</head>
+<body>
+  <h1>AS 地面站 · 图标预览</h1>
+  <p>同一份 SVG 在常见尺寸下的观感 —— 小尺寸要能看清字母轮廓，大尺寸要能扛得住细节。</p>
+
+  <div class="row">
+    <div class="item"><img src="icon.svg" width="16" height="16"><div class="cap">16</div></div>
+    <div class="item"><img src="icon.svg" width="24" height="24"><div class="cap">24</div></div>
+    <div class="item"><img src="icon.svg" width="32" height="32"><div class="cap">32</div></div>
+    <div class="item"><img src="icon.svg" width="48" height="48"><div class="cap">48 桌面</div></div>
+    <div class="item"><img src="icon.svg" width="64" height="64"><div class="cap">64</div></div>
+    <div class="item"><img src="icon.svg" width="96" height="96"><div class="cap">96</div></div>
+    <div class="item"><img src="icon.svg" width="128" height="128"><div class="cap">128 原始</div></div>
+    <div class="item"><img src="icon.svg" width="192" height="192"><div class="cap">192</div></div>
+  </div>
+
+  <div class="row onlight">
+    <div class="item"><img src="icon.svg" width="48" height="48"><div class="cap">浅色背景</div></div>
+    <div class="item"><img src="icon.svg" width="96" height="96"><div class="cap">浅色背景</div></div>
+    <div class="item"><img src="icon.svg" width="192" height="192"><div class="cap">浅色背景</div></div>
+  </div>
+</body>
+</html>

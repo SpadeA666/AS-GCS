@@ -1,0 +1,5 @@
+# 目标对齐（对应 ASNAV::trackYoloing / reset_target）
+string target_class
+---
+bool success
+string message

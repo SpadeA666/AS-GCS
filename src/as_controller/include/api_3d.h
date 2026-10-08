@@ -46,9 +46,12 @@ class ASNAV
     // nav_mode: 见上方 NavMode；-1（默认）→ 用 launch 的 nav_default_mode
     bool navigationEgo(float x, float y, float z, float yaw, float tol = 0.2f, bool stop_at_goal = false, int nav_mode = -1);
     bool navigationSuper(float x, float y, float z, float yaw, float tol = 0.2f, bool stop_at_goal = false, int nav_mode = -1);
+    // 轮廓控制（contouring control）变体：XY 速度按任务坐标系切向/法向分解（2026-10-08 新增）
+    bool navigationSuperContour(float x, float y, float z, float yaw, float tol = 0.2f, bool stop_at_goal = false, int nav_mode = -1);
     // rviz 打点接口同样支持 nav_mode：未启用的轴取 fly_height / 0.0f 作为锁定值
     bool navigationEgoRviz(int nav_mode = -1);
     bool navigationSuperRviz(int nav_mode = -1);
+    bool navigationSuperContourRviz(int nav_mode = -1);
     bool controlYaw(float x, float y, float z, float target_yaw, float wait_sec);
     bool flyDown(float descend_z);
     bool flyUp(float height);
@@ -59,6 +62,23 @@ class ASNAV
     bool trackYoloForward(float Kp_x, float Kp_y, float Kp_z, float target_box_height, int tol_xy, int tol_size);
     bool trackYoloing(float Kp_x, float Kp_y, float Kp_z, float target_box_height, int tol_xy, int tol_size);
     void reset_target();
+    /**
+     * 设置 Z / Yaw 的控制来源（地面站的两个开关用）：
+     *   NAV_FULL(0)      两者都由规划器给
+     *   NAV_Z_ONLY(1)    Z 由规划器，Yaw 用调用方传入
+     *   NAV_YAW_ONLY(2)  Yaw 由规划器，Z 用调用方传入
+     *   NAV_LEVEL(3)     两者都用调用方传入
+     */
+    void setNavMode(int m) { nav_default_mode_ = m; }
+    int getNavMode() const { return nav_default_mode_; }
+    /**
+     * 允许外部（网关）声明“这是一个新目标”。
+     * navigationSuper 内部用 super_goal_sent_ 做“只发一次 goal”的门闩，
+     * 而它只在“到达目标”那条路径上才会复位。如果飞机还在飞向 A 的
+     * 途中就改打 B，goal 不会重新发布，B 永远不会被规划。
+     * 网关在受理新目标前调一次本函数即可。
+     */
+    void resetSuperGoal();
     bool pwmControl(int pwm_channel_5, int pwm_channel_6, int pwm_channel_7 = 50);
     bool putShoot(float x, float y, float z, float yaw, float tol);
     bool putShootSimple(float x, float y, float z, float yaw, float tol);
@@ -140,6 +160,14 @@ class ASNAV
     float super_max_vel_z_;      // Z 速度指令限幅 (m/s)
     float super_max_integral_;   // 积分抗饱和上限
     float super_traj_timeout_;   // 轨迹超时时间 (s)
+
+    // —— 轮廓控制 contouring control 参数（2026-10-08 新增；默认全关，不影响原行为）——
+    bool  super_contour_enable_ = false;  // 全局开关(launch: super_contour_enable)：false 时 navigationSuper 行为不变
+    bool  super_contour_active_ = false;  // 单次调用标志：navigationSuperContour 置位，仅本次调用生效
+    float super_contour_kp_t_;            // 切向位置增益（沿轨迹方向，可放松）
+    float super_contour_kp_n_;            // 法向位置增益（垂直轨迹方向，收紧以贴路径）
+    float super_contour_ff_t_;            // 切向前馈系数（建议接近 1.0，补偿稳态滞后）
+    float super_contour_min_spd_;         // 参考速率低于此值退化为各向同性（防切向方向退化）
 
     // navigationSuper 运行时状态
     double integral_spx_;         // X 位置误差积分

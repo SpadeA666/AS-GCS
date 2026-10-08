@@ -1,0 +1,733 @@
+:root {
+  --bg: #14171c;
+  --panel: #1c2027;
+  --line: #2b313a;
+  --fg: #d8dee9;
+  --muted: #7d8794;
+  --accent: #4ea1ff;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.5 -apple-system, "Segoe UI", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+
+.title {
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+input.url {
+  background: #0f1216;
+  border: 1px solid var(--line);
+  color: var(--fg);
+  padding: 4px 8px;
+  border-radius: 4px;
+  width: 260px;
+  font-family: ui-monospace, monospace;
+}
+
+button {
+  background: #262c35;
+  border: 1px solid var(--line);
+  color: var(--fg);
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #555;
+  display: inline-block;
+}
+
+.dot.open {
+  background: #3fbf5f;
+}
+.dot.connecting {
+  background: #e0a030;
+}
+.dot.closed {
+  background: #d05050;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 1px;
+  background: var(--line);
+}
+
+.view3d {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+}
+
+.view3d-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.view3d-toolbar select {
+  background: #0f1216;
+  border: 1px solid var(--line);
+  color: var(--fg);
+  padding: 3px 6px;
+  border-radius: 4px;
+  max-width: 320px;
+}
+
+.view3d-host {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.view3d-host canvas {
+  display: block;
+}
+
+.sidebar {
+  width: 312px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.sidebar .panel {
+  /* 三等分：flex-basis 置 0，三者按剩余空间等比例分配，
+     否则内容多少会带偏高度（原来的 1 1 auto 就是这个问题）*/
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.mono {
+  font-family: ui-monospace, monospace;
+}
+
+/* ── 分段按钮（3D/2D、打点类型、高度模式）── */
+.divider {
+  width: 1px;
+  height: 18px;
+  background: var(--line);
+  margin: 0 4px;
+}
+
+.seg {
+  display: flex;
+}
+
+.seg button {
+  border-radius: 0;
+}
+
+.seg button:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.seg button:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.seg button.on,
+.row button.on {
+  background: #17324d;
+  border-color: var(--accent);
+  color: #dfe9f5;
+}
+
+.tb-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.axis-hint {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  flex: 0 0 auto;
+}
+
+.axis-hint b {
+  font-weight: 600;
+}
+
+/* 点云话题快捷切换：一排可点的小胶囊，免去下拉框里翻找 */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.chip {
+  padding: 2px 9px;
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  border-radius: 10px;
+  background: #1a1f26;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  cursor: pointer;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip:hover {
+  border-color: #4a5a6a;
+  color: var(--fg);
+}
+
+.chip.on {
+  background: #17324d;
+  border-color: var(--accent);
+  color: #dfe9f5;
+}
+
+/* ── 左侧控制列 ── */
+.ctrl-col {
+  width: 248px;
+  flex: 0 0 auto;
+  overflow-y: auto;
+  background: var(--bg);
+  padding: 10px;
+}
+
+.ctrl {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.warn {
+  background: #2a2418;
+  border: 1px solid #5c4a1e;
+  color: #e0c07a;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.warn code {
+  background: #3a3222;
+  padding: 0 4px;
+  border-radius: 3px;
+}
+
+.grp {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.grp-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 7px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 5px;
+}
+
+.row:last-child {
+  margin-bottom: 0;
+}
+
+.row button {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+.lbl {
+  color: var(--muted);
+  font-size: 12px;
+  min-width: 54px;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 11px;
+  flex-basis: 100%;
+}
+
+.num {
+  width: 72px;
+  background: #0f1216;
+  border: 1px solid var(--line);
+  color: var(--fg);
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.num:not(:disabled) {
+  border-color: var(--accent);
+  background: #101b26;
+}
+
+.num:disabled {
+  opacity: 0.4;
+}
+
+.num-val {
+  color: var(--accent);
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  min-width: 26px;
+  text-align: right;
+}
+
+.unit {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+input[type="range"] {
+  flex: 1;
+  min-width: 70px;
+  accent-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+/* ── 急停：点按触发，视觉上必须最显眼 ── */
+.estop {
+  background: #7a1f1f;
+  border: 2px solid #c03030;
+  color: #fff0f0;
+  font-weight: 700;
+  padding: 15px;
+  font-size: 16px;
+  letter-spacing: 0.16em;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px #2a1010 inset, 0 2px 8px rgba(180, 40, 40, 0.28);
+}
+
+.estop:hover:not(:disabled) {
+  background: #932626;
+  border-color: #e04040;
+}
+
+.estop:active:not(:disabled) {
+  background: #c03030;
+  transform: translateY(1px);
+}
+
+.row button.danger,
+.row button.btn-danger {
+  background: #4a1e1e;
+  border-color: #7a2f2f;
+  color: #ffb4b4;
+}
+
+.row button.btn-danger:hover:not(:disabled) {
+  border-color: #d05050;
+}
+
+.row button.btn-warn {
+  background: #3a3018;
+  border-color: #6b5a24;
+  color: #e8d08a;
+}
+
+.row button.btn-warn:hover:not(:disabled) {
+  border-color: #b09040;
+}
+
+.row button.btn-warn.on {
+  background: #6b4a10;
+  border-color: #e0a030;
+  color: #ffd98a;
+}
+
+/* ── 2D 地图 ── */
+
+/* 主视图列：上方 3D/2D，下方图像条 */
+.main-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--line);
+}
+
+.main-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.imgpanel {
+  /* 高度不再写死 230px：否则横向图会被高度限制压得很窄，左右留一大片黑边。
+     实际高度由 ImagePanel 按图像宽高比算出（见 host 上的内联 height）。 */
+  height: auto;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.imgpanel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+
+.imgpanel-toolbar select {
+  background: #0f1216;
+  border: 1px solid var(--line);
+  color: var(--fg);
+  padding: 3px 6px;
+  border-radius: 4px;
+  max-width: 380px;
+}
+
+.imgpanel-host {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #0a0d11;
+}
+
+.imgpanel-host canvas {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+}
+
+.imgpanel-stage {
+  position: relative;
+  /* stage 的宽度/高度由 JS 按 canvas 实测显示尺寸固定（见 ImagePanel 里的 disp）。
+     不要指望 flex/inline-block 自动推出来：.imgpanel-host 是 flex 容器，
+     item 会被 blockify，而 canvas 的 max-width:100% 又相对 stage —— 循环依赖。 */
+  display: inline-block;
+  line-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.imgpanel-stage canvas {
+  display: block;
+  /* stage 已经等于 canvas 的显示尺寸，所以撑满不会变形 */
+  width: 100%;
+  height: 100%;
+}
+
+/* 叠加层用 SVG 浮在 canvas 上方：
+   如果画在 canvas 里，每帧 putImageData 会把框擦掉 */
+.imgpanel-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.imgpanel-empty,
+.imgpanel-err {
+  position: absolute;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.imgpanel-err {
+  color: #e0a030;
+  bottom: 8px;
+  left: 10px;
+}
+.map2d {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+}
+
+/* 安全区独立一行：工具栏太挤时这组控件容易被忽略，所以单独占一行 */
+.map2d-fencebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 10px;
+  border-top: 1px solid var(--line);
+  background: #171b21;
+  flex: 0 0 auto;
+}
+
+.map2d-fencebar .tb-group {
+  gap: 8px;
+}
+
+.map2d-fencebar input.num {
+  width: 76px;
+}
+
+.map2d-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+/* ── 打点确认卡片（防误触）── */
+.wp-confirm {
+  position: absolute;
+  width: 196px;
+  background: #1c2027;
+  border: 1px solid #3a4250;
+  border-left: 3px solid var(--accent);
+  border-radius: 5px;
+  padding: 10px 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  z-index: 5;
+  pointer-events: auto;
+}
+
+.wp-confirm.px4 {
+  border-left-color: #e0a030;
+}
+
+.wp-confirm-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 7px;
+  font-size: 12px;
+}
+
+.wp-confirm-head b {
+  font-weight: 600;
+}
+
+.wp-confirm-body {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--fg);
+  margin-bottom: 9px;
+}
+
+.wp-confirm-body .k {
+  display: inline-block;
+  width: 34px;
+  color: var(--muted);
+}
+
+.wp-confirm-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.wp-confirm-actions button {
+  flex: 1;
+  padding: 5px 0;
+  font-size: 12px;
+}
+
+.wp-confirm-actions button.primary {
+  background: #1d4a73;
+  border-color: var(--accent);
+  color: #e6f0fa;
+  font-weight: 600;
+}
+
+.wp-confirm-actions button.primary:hover {
+  background: #24598a;
+}
+
+.view3d-host {
+  position: relative;
+}
+
+.panel {
+  background: var(--bg);
+  padding: 10px 12px;
+  overflow: auto;
+  min-height: 0;
+}
+
+.panel h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+ul.plain li {
+  padding: 2px 0;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+ul.logs li {
+  color: var(--muted);
+  word-break: break-all;
+}
+
+/* 分级着色：越界拒绝用红色加粗，一眼能看到 */
+.wp-confirm-warn {
+  color: #ff5f5f;
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 5px 8px;
+  margin: 5px 0 3px;
+  background: rgba(255, 95, 95, 0.12);
+  border-left: 3px solid #ff5f5f;
+  border-radius: 3px;
+}
+
+ul.logs li.log-error {
+  color: #ff5f5f;
+  font-weight: 600;
+}
+ul.logs li.log-warn {
+  color: #e0a030;
+}
+ul.logs li.log-ok {
+  color: #5fe08a;
+}
+ul.logs li.log-info {
+  color: var(--muted);
+}
+ul.logs li .log-time {
+  opacity: 0.6;
+  font-size: 11px;
+}
+
+.topic-list li {
+  border-bottom: 1px solid #22272f;
+}
+
+.topic-btn {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 5px 6px;
+  border-radius: 3px;
+}
+
+.topic-btn:hover {
+  background: #20252c;
+}
+
+.topic-list li.on .topic-btn {
+  background: #17324d;
+}
+
+.tname {
+  font-family: ui-monospace, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ttype {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.thz {
+  color: var(--accent);
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  min-width: 56px;
+  text-align: right;
+}

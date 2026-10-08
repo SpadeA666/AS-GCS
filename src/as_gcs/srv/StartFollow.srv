@@ -1,0 +1,8 @@
+# 框选目标跟随（对应 ASNAV::trackYoloForward / trackYoloing）
+string target_class
+uint8 MODE_FORWARD=0   # D435i 前视
+uint8 MODE_DOWN=1      # 下视
+uint8 mode
+---
+bool success
+string message

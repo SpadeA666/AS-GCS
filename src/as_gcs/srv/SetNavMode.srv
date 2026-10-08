@@ -1,0 +1,9 @@
+# 设置 Z / Yaw 的控制来源（对应地面站的两个开关）
+#   nav_mode = 0  NAV_FULL     Z:规划器  Yaw:规划器
+#   nav_mode = 1  NAV_Z_ONLY   Z:规划器  Yaw:用打点时填的
+#   nav_mode = 2  NAV_YAW_ONLY Z:用打点时填的  Yaw:规划器
+#   nav_mode = 3  NAV_LEVEL    Z:用打点时填的  Yaw:用打点时填的
+int32 nav_mode
+---
+bool success
+string message

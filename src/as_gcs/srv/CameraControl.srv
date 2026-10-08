@@ -1,0 +1,6 @@
+# 摄像头模式切换。内部会处理"先停 YOLO → 换相机 → 按新模式重启 YOLO"的顺序。
+string mode      # off | mono | d435i | both
+---
+bool success
+string message
+string[] running

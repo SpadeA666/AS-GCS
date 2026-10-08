@@ -1,0 +1,13 @@
+# 导航到目标点（交给规划器）。长任务用 action，客户端才能取消、看进度。
+geometry_msgs/Point target
+float32 yaw
+float32 tol
+string planner        # ego | super
+bool stop_at_goal
+---
+bool success
+string message
+---
+geometry_msgs/Point current
+float32 distance_remaining
+string state

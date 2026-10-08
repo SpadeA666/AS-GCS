@@ -1,0 +1,12 @@
+# 舵机 + 激光笔。三个通道走同一个 pwmControl，必须一起下发。
+# 用 -1 表示"保持当前值"——网关会缓存上一次的值，只替换目标通道。
+# 这一点很关键：pwmControl 的 M7 默认值是 50(中位)，若不传当前值会把激光关掉。
+int32 channel_5   # 舵机 M5，0~100，-1=保持
+int32 channel_6   # 舵机 M6，0~100，-1=保持
+int32 channel_7   # 激光笔 M7，0~100，-1=保持
+---
+bool success
+string message
+int32 applied_5
+int32 applied_6
+int32 applied_7
