@@ -25,6 +25,7 @@ source /opt/ros/noetic/setup.bash 2>/dev/null
 source /home/spadea/catkin_ws/devel/setup.bash 2>/dev/null
 
 LAUNCH=/home/spadea/catkin_ws/src/foxglove_bridge/ros1_foxglove_bridge/launch/foxglove_bridge.launch
+SCRIPTS_DIR=/home/spadea/catkin_ws/src/as_gcs/scripts
 INTERVAL=3
 
 log() { echo "[$(date '+%H:%M:%S')] $*" >> /tmp/gcs_watchdog.log; }
@@ -42,6 +43,14 @@ bridge_up() {
 gw_up() {
   pgrep -f "[g]cs_gateway_node" >/dev/null 2>&1 &&
     rosnode list 2>/dev/null | grep -qx "/gcs_gateway"
+}
+
+# 遥控器桥（joy_rc_bridge）：同样是 master 换代的受害者 —— 进程还活着，
+# 但 rospy 连接已失效，rc/override 上不再有发布者，遥控器整个失灵。
+# 这是可选组件：没插遥控器（js0 不在）就不守。
+joy_up() {
+  pgrep -f "[j]oy_rc_bridge.py" >/dev/null 2>&1 &&
+    rosnode list 2>/dev/null | grep -qx "/joy_rc_bridge"
 }
 
 log "启动（间隔 ${INTERVAL}s）"
@@ -69,6 +78,15 @@ while true; do
     sleep 1
     setsid nohup rosrun as_controller gcs_gateway_node > /tmp/gcs_gateway.log 2>&1 < /dev/null &
     sleep 4
+  fi
+
+  # 桥只有在接了遥控器时才守；js0 不在就跳过。
+  if [ -e /dev/input/js0 ] && ! joy_up; then
+    log "joy_rc_bridge 失效 → 重启"
+    pkill -f "[j]oy_rc_bridge.py" 2>/dev/null
+    sleep 1
+    setsid nohup /usr/bin/python3 "$SCRIPTS_DIR/joy_rc_bridge.py" > /tmp/joy_bridge.log 2>&1 < /dev/null &
+    sleep 2
   fi
 
   sleep "$INTERVAL"

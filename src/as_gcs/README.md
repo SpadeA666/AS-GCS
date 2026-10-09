@@ -121,6 +121,19 @@ bash scripts/joy_bridge_ctl.sh stop
 否则 QGC 的 `MANUAL_CONTROL` 和桥的 RC 通道会同时被接受（`COM_RC_IN_MODE=2`），
 摇杆互相打架。
 
+**⚠️ 重启仿真后遥控器没反应？** 那是 master 换代把桥变成了孤儿：
+桥进程还活着，但 rospy 连接已失效，`rc/override` 上不再有发布者。
+这**不是**桥的 bug，也不是参数丢了 —— PX4 参数由 `-w sitl_iris_0` 持久化在工作目录，
+重启后仍在。
+
+现在 `start-dev.sh` 和 `gcs_watchdog.sh` 都已把桥纳进来（与 bridge/gateway 同级的
+“进程 + 注册”双判据），所以 master 换代后会自动救回。手动救：
+
+```bash
+bash scripts/joy_bridge_ctl.sh stop && bash scripts/joy_bridge_ctl.sh start
+# 或者直接重跑：bash ui/start-dev.sh
+```
+
 ### 通道映射（对齐实机习惯）
 
 | TX12 | js 编号 | RC 通道 | PX4 参数 |

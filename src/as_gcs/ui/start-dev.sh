@@ -6,6 +6,7 @@ source /opt/ros/noetic/setup.bash
 source /home/spadea/catkin_ws/devel/setup.bash
 
 UI_DIR=/home/spadea/catkin_ws/src/as_gcs/ui
+SCRIPTS_DIR=/home/spadea/catkin_ws/src/as_gcs/scripts
 LAUNCH=/home/spadea/catkin_ws/src/foxglove_bridge/ros1_foxglove_bridge/launch/foxglove_bridge.launch
 
 port_up() { ss -tln 2>/dev/null | grep -q ":$1 "; }
@@ -29,6 +30,13 @@ bridge_up() {
 gw_up() {
   pgrep -f "[g]cs_gateway_node" >/dev/null 2>&1 &&
     rosnode list 2>/dev/null | grep -qx "/gcs_gateway"
+}
+
+# 遥控器桥：master 换代后同样会成孤儿（进程活着但 rospy 已失联），
+# 表现为“重启仿真后遥控器没反应”。可选组件，只在 js0 存在时启。
+joy_up() {
+  pgrep -f "[j]oy_rc_bridge.py" >/dev/null 2>&1 &&
+    rosnode list 2>/dev/null | grep -qx "/joy_rc_bridge"
 }
 
 # ── 1. roscore ──
@@ -82,7 +90,25 @@ else
   echo "  已启动"
 fi
 
-# ── 5. watchdog ──
+# ── 5. joy_rc_bridge（可选：接了遥控器才起）──
+# 它走 RC_CHANNELS_OVERRIDE 把 TX12 灌进 PX4，替掉 QGC 那条发不出 RC 通道的路径。
+# 没插遥控器就跳过，不影响仿真和地面站。
+# 另：master 换代会让它变孤儿，这里靠“进程 + 注册”双判据识别并重启。
+echo "── joy_rc_bridge ──"
+if [ ! -e /dev/input/js0 ]; then
+  echo "  跳过（没有 /dev/input/js0，遥控器未接）"
+elif joy_up; then
+  echo "  已在运行（注册在当前 master）"
+else
+  # 孤儿桥还占着 /joy_rc_bridge 的注册与 rc/override 的发布位，先清掉再起。
+  pkill -f "[j]oy_rc_bridge.py" 2>/dev/null
+  sleep 1
+  setsid nohup /usr/bin/python3 "$SCRIPTS_DIR/joy_rc_bridge.py" > /tmp/joy_bridge.log 2>&1 < /dev/null &
+  for _ in $(seq 1 20); do joy_up && break; sleep 0.5; done
+  echo "  已启动"
+fi
+
+# ── 6. watchdog ──
 # 守护 bridge/gateway：raicom.sh 重启会让 master 换代，这两个组件会变孤儿。
 # 有了它就不用每次 master 换代后手动重跑本脚本。
 echo "── watchdog ──"
@@ -102,6 +128,13 @@ if gw_up; then
   echo "  网关      ✓ $(rosservice list 2>/dev/null | grep -c '^/gcs/') 个 /gcs/ 服务（节点响应正常）"
 else
   echo "  网关      ✗ 节点无响应（僵尸注册也会出现在列表里，别被数字骗了）"
+fi
+if [ ! -e /dev/input/js0 ]; then
+  echo "  遥控器桥  – 未接（无 js0）"
+elif joy_up; then
+  echo "  遥控器桥  ✓ 已在当前 master 上发布 rc/override"
+else
+  echo "  遥控器桥  ✗ 失效（进程或注册缺失 → 遥控器不会响应）"
 fi
 echo
 echo "浏览器打开： http://localhost:5173/"
