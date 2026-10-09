@@ -489,6 +489,59 @@ const bool rpy_moving = (fabsf(_x_diff.update(x, dt_s)) > minimum_stick_change) 
 
 ---
 
+### 9.7 规划器切换（SUPER ↔ EGO）与 EGO 的话题配置
+
+地面站左侧「规划器」那一组按钮用于在 **SUPER** 与 **EGO** 之间切换。
+
+- 默认 **SUPER**，启动时也是 SUPER。
+- 切换会**真实停/启节点**（走 `scripts/switch_planner.sh`，不是只改个变量）：
+  - `SUPER → EGO`：停 `mission_planner`/`fsm_node` → 启 `octomap_server` → 启 `single_run_in_mid.launch`
+  - `EGO → SUPER`：停 `ego_planner_node`/`traj_server`/`octomap_server` → 启 `click_demo.launch`
+- **飞行中（armed）禁止切换**，网关会直接拒并回一个红色提示；降落后可再切。
+- 切换过程约 10s，界面会显示「⏳ 正在切换…」，完成后变回当前规划器。
+
+#### ❗ EGO 必须对齐的三处话题
+
+**`ego_planner` 不在本仓库**，需自行准备。它的
+`plan_manage/launch/single_run_in_mid.launch` 里有三处话题名与本项目不匹配，
+不处理的话切过去会“看着起来了，就是不动”。
+
+| 项 | EGO launch 里的原值 | 本项目约定 | 说明 |
+|---|---|---|---|
+| 轨迹输出 | `drone_0_planning/pos_cmd` | `/planning/pos_cmd` | ASNAV 订阅后者（SUPER 也发这个） |
+| 里程计输入 | `/Odomtry_highrate` | `/Odometry_highrate` | 原 launch 少了个 e，**确实是拼写错误** |
+| 点云输入 | `/octomap_` | `/octomap_point_cloud_centers` | 前者没有任何节点发布，**是笔误** |
+
+其中后两项（拼写与无效话题名）是**真错误**，直接改就行。
+
+#### 💡 但 `drone_<id>_` 前缀是有意设计，不要删
+
+轨道话题那个不一样：EGO 原本写成
+`drone_$(arg drone_id)_planning/pos_cmd`，带一个 **drone_id 前缀** ——
+**这是刻意的设计，不是笔误**。
+
+> **目的：为了以后做多机集群协同。**
+> 每台飞机的规划器轨迹话题天然带自己的编号，订阅方按 `drone_<id>_`
+> 就能区分是哪台机的轨迹，不会串到一起。
+> 单机时看着多余，多机时是刚需。
+
+所以单机复现时你有两种选择：
+
+1. **去掉前缀**（本项目单机验证采用这种做法）：把 launch 的 remap 改成
+   `planning/pos_cmd`，与 ASNAV / SUPER 对齐。简单，但将来上多机会撞名。
+2. **保留前缀，改订阅方**：把 ASNAV 改成订阅 `drone_<id>_planning/pos_cmd`。
+   为多机预留，但单机时也要传 drone_id。
+
+> **将来上多机集群前，记得改回第 2 种。** 现在这个无前缀的写法只是为了
+> 单机先把链路跑通。
+
+#### 膨胀点云
+
+两个规划器的膨胀图层话题名不同，前端已做兼容：
+
+- **SUPER**：`/fsm_node/rog_map/inf_occ`
+- **EGO**：`/grid_map/occupancy_inflate`
+
 ## 十、给 AI Agent 的说明
 
 如果你打算把这份指南交给 agent 执行，**请先让它做下面三件事**，再开始配置。
