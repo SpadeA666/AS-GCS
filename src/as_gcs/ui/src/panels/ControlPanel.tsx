@@ -53,6 +53,8 @@ interface Props {
   services: Set<string>;
   planner: Planner;
   onPlannerChange: (p: Planner) => void;
+  /** 规划器切换状态，来自 /gcs/planner_status："ready super" / "switching ego" / "failed ego" */
+  plannerStatus?: string;
   cameraMode: CameraMode;
   onCameraModeChange: (m: CameraMode) => void;
   onLog: (msg: string) => void;
@@ -77,6 +79,7 @@ export function ControlPanel({
   services,
   planner,
   onPlannerChange,
+  plannerStatus,
   cameraMode,
   onCameraModeChange,
   onLog,
@@ -88,6 +91,13 @@ export function ControlPanel({
   currentZ,
 }: Props) {
   const [busy, setBusy] = useState<string | undefined>(undefined);
+  /** 待确认的规划器切换目标（undefined = 没在弹确认） */
+  const [switchTarget, setSwitchTarget] = useState<Planner | undefined>(undefined);
+  /** /gcs/planner_status 的解析结果 */
+  const switchState = (plannerStatus ?? "ready super").split(/\s+/)[0];
+  const switchWho = (plannerStatus ?? "ready super").split(/\s+/)[1] ?? "";
+  const isSwitching = switchState === "switching";
+  const statusFailed = switchState === "failed";
   const [yoloOn, setYoloOn] = useState(false);
   const [servo5, setServo5] = useState(50);
   const [servo6, setServo6] = useState(50);
@@ -273,19 +283,32 @@ export function ControlPanel({
         <div className="row">
           <button
             className={planner === "ego" ? "on" : ""}
-            onClick={() => onPlannerChange("ego")}
-            title="切换会清空当前航点队列"
+            disabled={disabled || isSwitching}
+            onClick={() => setSwitchTarget("ego")}
+            title="切换到 EGO（会停掉 SUPER、启动 octomap + EGO，约 10s）"
           >
             EGO
           </button>
           <button
             className={planner === "super" ? "on" : ""}
-            onClick={() => onPlannerChange("super")}
-            title="切换会清空当前航点队列"
+            disabled={disabled || isSwitching}
+            onClick={() => setSwitchTarget("super")}
+            title="切换到 SUPER（会停掉 EGO 与 octomap，约 10s）"
           >
             SUPER
           </button>
         </div>
+
+        {isSwitching && (
+          <div className="hint" style={{ color: "#e0a030" }}>
+            ⏳ 正在切换到 {switchWho.toUpperCase()}…（停旧节点 + 启新节点，约 10s）
+          </div>
+        )}
+        {statusFailed && (
+          <div className="hint" style={{ color: "#d05050" }}>
+            ✗ 上次切换失败（{switchWho.toUpperCase()}），详情看 /tmp/planner_switch.log
+          </div>
+        )}
 
         {/* 规划器打点时，Z / Yaw 交给谁。位置按 bit 语义组合成 nav_mode：bit0=Z, bit1=Yaw */}
         <div className="row">
@@ -561,6 +584,55 @@ export function ControlPanel({
               确认起飞
             </button>
             <button onClick={() => setConfirmTakeoff(false)}>取消</button>
+          </div>
+        </div>
+      )}
+
+      {switchTarget && (
+        <div
+          className="wp-confirm"
+          style={{
+            position: "fixed",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            zIndex: 1000,
+            minWidth: 300,
+          }}
+        >
+          <div className="wp-confirm-head">
+            <b>确认切换规划器</b>
+            <span className="muted">约 10s</span>
+          </div>
+          <div className="wp-confirm-body">
+            <div>
+              <span className="k">当前</span> {planner.toUpperCase()}
+            </div>
+            <div style={{ marginTop: 4 }}>
+              <span className="k">目标</span> {switchTarget.toUpperCase()}
+            </div>
+            <div style={{ marginTop: 6 }}>
+              <span className="k">动作</span>{" "}
+              {switchTarget === "ego"
+                ? "停 SUPER → 启 octomap → 启 EGO"
+                : "停 EGO 与 octomap → 启 SUPER"}
+            </div>
+            <div className="wp-confirm-warn">
+              ⚠ 会停掉当前规划器节点。飞行中禁止切换（网关会拒绝），
+              请确认已降落并上锁。切换期间不要打点。
+            </div>
+          </div>
+          <div className="wp-confirm-actions">
+            <button
+              className="primary"
+              onClick={() => {
+                onPlannerChange(switchTarget);
+                setSwitchTarget(undefined);
+              }}
+            >
+              确认切换
+            </button>
+            <button onClick={() => setSwitchTarget(undefined)}>取消</button>
           </div>
         </div>
       )}

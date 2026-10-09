@@ -39,6 +39,10 @@
 #include <mavros_msgs/State.h>
 #include <tf/transform_datatypes.h>
 #include <locale.h>
+#include <std_msgs/String.h>
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -60,6 +64,7 @@ enum class CmdType {
   ACTUATOR,
   EMERGENCY,
   ABORT,
+  SET_PLANNER,
 };
 
 struct Command {
@@ -108,6 +113,14 @@ class GcsGateway {
     srv_geofence_ = nh_.advertiseService("/gcs/set_geofence", &GcsGateway::onSetGeofence, this);
     srv_estop_ = nh_.advertiseService("/gcs/emergency_stop", &GcsGateway::onEmergency, this);
 
+    // 规划器切换状态：latch=true，后连上来的前端也能立即拿到当前状态
+    planner_status_pub_ = nh_.advertise<std_msgs::String>("/gcs/planner_status", 1, true);
+    {
+      std_msgs::String m;
+      m.data = "ready " + std::string(planner_ == Planner::SUPER ? "super" : "ego");
+      planner_status_pub_.publish(m);
+    }
+
     // 心跳：地面站周期性发，超时则视为失联
     sub_heartbeat_ = nh_.subscribe("/gcs/heartbeat", 5, &GcsGateway::onHeartbeat, this);
 
@@ -144,6 +157,7 @@ class GcsGateway {
       // 非阻塞推进：每帧只刷新目标，不在这里等
       if (preflight_ != PreFlight::NONE) runPreflight();
       runTask();
+      pollPlannerSwitch();
 
       // 关键：每帧都发 setpoint。OFFBOARD 靠的就是这个心跳，
       // 一旦中间断流超过 ~0.5s，PX4 就会退出 OFFBOARD 并上锁。
@@ -299,6 +313,32 @@ class GcsGateway {
                    cur_z_);
         } else {
           ROS_INFO("[gcs_gateway] 取消请求收到，但当前没有进行中的任务");
+        }
+        break;
+
+      case CmdType::SET_PLANNER:
+        // 切换在独立进程里做（要启停 roslaunch，会阻塞好几秒），
+        // 所以这里只负责起脚本 + 置 pending，状态由 pollPlannerSwitch() 轮询推进。
+        {
+          const std::string who = c.s;
+          if (!std::ifstream(kSwitchScript.c_str()).good()) {
+            ROS_ERROR("[gcs_gateway] 找不到切换脚本: %s", kSwitchScript.c_str());
+            publishPlannerStatus("failed", who);
+            break;
+          }
+          // 清掉上一次的状态文件，避免把旧结果当成新结果
+          std::remove(kPlannerStateFile);
+          const std::string cmd =
+              "bash " + kSwitchScript + " " + who + " > /dev/null 2>&1 &\n";
+          const int rc = std::system(cmd.c_str());
+          if (rc != 0) {
+            ROS_ERROR("[gcs_gateway] 拉起切换脚本失败 rc=%d", rc);
+            publishPlannerStatus("failed", who);
+            break;
+          }
+          planner_pending_ = who;
+          publishPlannerStatus("switching", who);
+          ROS_WARN("[gcs_gateway] 已启动规划器切换脚本: -> %s", who.c_str());
         }
         break;
 
@@ -552,20 +592,81 @@ class GcsGateway {
   }
 
   bool onSetPlanner(as_gcs::SetPlanner::Request& req, as_gcs::SetPlanner::Response& res) {
-    if (req.planner == "ego") {
-      planner_ = Planner::EGO;
-      res.message = "已切换为 EGO";
-    } else if (req.planner == "super") {
-      planner_ = Planner::SUPER;
-      res.message = "已切换为 SUPER";
-    } else {
+    if (req.planner != "ego" && req.planner != "super") {
       res.success = false;
       res.message = "未知规划器: " + req.planner + "（应为 ego 或 super）";
       return true;
     }
+
+    // 飞行中不允许切：切规划器要停掉正在跑的节点，飞机还在空中时做这个很危险
+    if (mav_state_.armed) {
+      res.success = false;
+      res.message = "飞行中禁止切换规划器，请先降落并上锁";
+      ROS_WARN("[gcs_gateway] 拒绝切换规划器：当前已解锁");
+      return true;
+    }
+
+    if (!planner_pending_.empty()) {
+      res.success = false;
+      res.message = "正在切换到 " + planner_pending_ + "，请等待完成";
+      return true;
+    }
+
+    const bool want_ego = (req.planner == "ego");
+    const bool already = (want_ego && planner_ == Planner::EGO) ||
+                         (!want_ego && planner_ == Planner::SUPER);
+    if (already) {
+      res.success = true;
+      res.message = "当前已经是 " + req.planner + "，无需切换";
+      return true;
+    }
+
+    enqueue([&](Command& c) {
+      c.type = CmdType::SET_PLANNER;
+      c.s = req.planner;
+    });
     res.success = true;
-    ROS_INFO("[gcs_gateway] 规划器切换: %s", res.message.c_str());
+    res.message = "已受理，正在切换到 " + req.planner + "（停旧节点 + 启新节点，约 10s）";
+    ROS_WARN("[gcs_gateway] 收到规划器切换请求: -> %s", req.planner.c_str());
     return true;
+  }
+
+  /**
+   * 轮询切换脚本写的状态文件，推进 planner_pending_ 状态机并广播给前端。
+   * 切换在独立进程（switch_planner.sh）里做，不阻塞主循环的 setpoint 心跳。
+   */
+  void pollPlannerSwitch() {
+    if (planner_pending_.empty()) {
+      return;
+    }
+    std::ifstream f(kPlannerStateFile);
+    if (!f.is_open()) {
+      return;
+    }
+    std::string line;
+    if (!std::getline(f, line)) {
+      return;
+    }
+
+    if (line.rfind("ready", 0) == 0) {
+      planner_ = (planner_pending_ == "ego") ? Planner::EGO : Planner::SUPER;
+      ROS_WARN("[gcs_gateway] 规划器切换完成: %s", planner_pending_.c_str());
+      publishPlannerStatus("ready", planner_pending_);
+      planner_pending_.clear();
+    } else if (line.rfind("failed", 0) == 0) {
+      ROS_ERROR("[gcs_gateway] 规划器切换失败: %s", line.c_str());
+      publishPlannerStatus("failed", planner_pending_);
+      planner_pending_.clear();
+    }
+  }
+
+  void publishPlannerStatus(const std::string& state, const std::string& who) {
+    if (!planner_status_pub_) {
+      return;
+    }
+    std_msgs::String m;
+    m.data = state + " " + who;
+    planner_status_pub_.publish(m);
   }
 
   bool onStartFollow(as_gcs::StartFollow::Request& req, as_gcs::StartFollow::Response& res) {
@@ -794,6 +895,16 @@ class GcsGateway {
   ASNAV uav_;
 
   ros::ServiceServer srv_takeoff_, srv_cancel_takeoff_, srv_land_, srv_fly_up_, srv_fly_down_;
+
+  // ────────── 规划器切换（SUPER <-> EGO）──────────
+  /// 切换脚本路径（在 catkin_ws/scripts/ 下）
+  const std::string kSwitchScript =
+      std::string(getenv("HOME") ? getenv("HOME") : ".") + "/catkin_ws/scripts/switch_planner.sh";
+  /// 切换脚本写的状态文件
+  static constexpr const char* kPlannerStateFile = "/tmp/planner_switch.state";
+  /// 非空 = 切换进行中，值是目标规划器（ego / super）
+  std::string planner_pending_;
+  ros::Publisher planner_status_pub_;
   ros::ServiceServer srv_goto_, srv_goto_planner_, srv_planner_, srv_nav_mode_,
       srv_start_follow_, srv_stop_follow_;
   ros::ServiceServer srv_align_, srv_actuator_, srv_geofence_, srv_estop_;

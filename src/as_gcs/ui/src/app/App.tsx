@@ -64,6 +64,8 @@ export default function App() {
 
   const [viewMode, setViewMode] = useState<ViewMode>("3d");
   const [planner, setPlanner] = useState<Planner>("super");
+  /** 规划器切换状态，来自 /gcs/planner_status："ready super" / "switching ego" / "failed ego" */
+  const [plannerStatus, setPlannerStatus] = useState<string>("ready super");
   const [cameraMode, setCameraMode] = useState<CameraMode>("off");
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
   /** 2D 视图状态（也提升，切回时保持位置和缩放） */
@@ -527,14 +529,54 @@ export default function App() {
 
   const handlePlannerChange = useCallback(
     (p: Planner) => {
-      setPlanner(p);
+      // 真正切规划器要走网关：它会停掉旧节点、启新节点（十几秒），
+      // 完成后通过 /gcs/planner_status 回推状态。这里只发请求，
+      // 不要先 setPlanner —— 否则界面显示的“已切换”和实际不一致。
+      if (!conn) {
+        pushLog("切换规划器: 未连接");
+        return;
+      }
+      if (!services.includes("/gcs/set_planner")) {
+        pushLog("切换规划器: 网关服务 /gcs/set_planner 不存在（gcs_gateway 还没起）");
+        return;
+      }
+      conn
+        .callService("/gcs/set_planner", { planner: p })
+        .then((r) => {
+          const res = r as { success?: boolean; message?: string };
+          pushLog(
+            `切换规划器 → ${p.toUpperCase()}: ${res.success ? "已受理" : "拒绝"} ${res.message ?? ""}`,
+          );
+        })
+        .catch((e) => pushLog(`切换规划器失败: ${String(e)}`));
+
       if (waypoints.length > 0) {
-        pushLog(`切换规划器 → ${p.toUpperCase()}，已清空 ${waypoints.length} 个航点（防止旧点被新规划器执行）`);
+        pushLog(`已清空 ${waypoints.length} 个航点（防止旧点被新规划器执行）`);
         setWaypoints([]);
       }
     },
-    [waypoints.length, pushLog],
+    [conn, services, waypoints.length, pushLog],
   );
+
+  // 订阅规划器切换状态：网关切完之后回推 "ready ego/super"，
+  // 前面才会把 planner 真正改掉（而不是点一下就改）。
+  useEffect(() => {
+    if (!conn) return;
+    return conn.subscribe("/gcs/planner_status", (msg) => {
+      const d = (msg as { data?: string }).data;
+      if (!d) return;
+      setPlannerStatus(d);
+      const [st, who] = d.split(/\s+/);
+      if (st === "ready" && (who === "ego" || who === "super")) {
+        setPlanner(who as Planner);
+        pushLog(`规划器已就绪: ${who.toUpperCase()}`);
+      } else if (st === "switching") {
+        pushLog(`规划器切换中: → ${(who ?? "").toUpperCase()}（约 10s）`);
+      } else if (st === "failed") {
+        pushLog(`规划器切换失败: ${who ?? ""}（看 /tmp/planner_switch.log）`);
+      }
+    });
+  }, [conn, pushLog]);
 
   return (
     <div className="app">
@@ -578,6 +620,7 @@ export default function App() {
             conn={conn}
             services={serviceSet}
             planner={planner}
+            plannerStatus={plannerStatus}
             onPlannerChange={handlePlannerChange}
             cameraMode={cameraMode}
             onCameraModeChange={setCameraMode}
