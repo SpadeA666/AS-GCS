@@ -386,6 +386,82 @@ bash ~/catkin_ws/src/as_gcs/scripts/joy_bridge_ctl.sh stop     # 停
 > ⚠️ **跑桥时要在 QGC 里关掉 joystick**（Vehicle Setup → Joystick → 取消 Enable），
 > 否则 QGC 的 `MANUAL_CONTROL` 和桥的 RC 通道会同时生效，摇杆打架。
 
+### 9.6 地面站 ↔ 遥控器：控制权如何来回切
+
+#### 切回遥控器：拨模式开关 C（就这一步）
+
+`RC_MAP_FLTMODE=7` 让 C 开关直接控模式。拨动它时：
+
+```cpp
+if (switches.mode_slot != _previous_switches.mode_slot) {   // ← 必须真的拨动
+    evaluateModeSlot(switches.mode_slot);                   // → ACTION_SWITCH_MODE
+}
+```
+
+PX4 会把模式从 OFFBOARD 换成 `COM_FLTMODE<n>`：低档=STABILIZED、中档=ALTCTL、
+高档=POSCTL。**飞机立刻由遥控器接管。**
+
+> **“停在原位不动”是无效的** —— 判据是 `!=`（slot **变化**），所以要先拨离再拨到目标档。
+
+#### ❗ 常见误解：开关位置 ≠ 持续状态
+
+> “遥控器上解锁（B）还是未使能、offboard（F）也未使能，
+>  切回遥控器岂不是直接 disarm 了？”
+
+**不会**。PX4 里这些开关都是**边沿触发**，不是电平触发。
+`ManualControl.cpp` 里每个开关的判断都带 `!=`：
+
+```
+135: if (switches.arm_switch      != _previous_switches.arm_switch) {
+165: if (switches.offboard_switch != _previous_switches.offboard_switch) {
+175: if (switches.kill_switch     != _previous_switches.kill_switch) {
+```
+
+**`arm_switch` 一直是 OFF → `OFF != OFF` 为假 → 根本不进那个 branch
+→ 永远不会发 `ACTION_DISARM`。**
+
+所以：**切模式时只要 B（解锁）和 F（offboard）不动，就不会 disarm、也不会切 OFFBOARD。**
+
+**开关是“命令”（瞬时动作），不是“状态”。** armed 和 mode 是 PX4 自己的内部状态，
+一旦 arm、一旦进了某个模式，就会一直保持，除非有新命令改变它。
+
+另外还有一层保险：
+
+```cpp
+if (_previous_switches_initialized) {   // ← 首次不处理
+```
+
+**上电第一次收到开关状态时只记录、不动作**，所以上电时开关停在哪都没副作用。
+
+**唯一会 disarm 的情况是“你主动拨动 B”** —— 所以别碰它。
+
+#### 另一条路：快拨摇杆（`COM_RC_OVERRIDE`）
+
+`COM_RC_OVERRIDE=3` 已开了 OFFBOARD 的接管位（bit1）。但判据是**变化率**，不是位置：
+
+```cpp
+const float minimum_stick_change = 0.01f * _param_com_rc_stick_ov.get();  // 0.01 × 30 = 0.3
+const bool rpy_moving = (fabsf(_x_diff.update(x, dt_s)) > minimum_stick_change) || ...;
+```
+
+`_x_diff.update()` 是**微分器**，输出“每秒变化多少”，默认阈值 **30%（`COM_RC_STICK_OV`）**。
+
+> **慢慢推杆不触发，得快速拨**（约 0.3 秒内推过 30% 行程）。
+
+如果觉得难触发，可把 `COM_RC_STICK_OV` 调小（如 30 → 15）；代价是**误触概率上升** ——
+手抖一下可能就把 OFFBOARD 顶掉，打断正在跑的规划任务。
+
+#### ❌ 不要用“来回切 offboard + 动 arm”
+
+那个做法虽然能 work，但**实机上风险高** —— 等于在飞行中玩解锁/上锁。
+实际上只需要拨一下 C。
+
+#### 待验证
+
+上述结论来自 PX4 v1.13.2 源码分析，**尚未实机/仿真实测**。
+验证方法：起仿真 → 地面站起飞进 OFFBOARD → **只拨 C** → 看 `mode` 是否变 POSCTL
+而 `armed` 保持 True。
+
 ---
 
 ## 十、给 AI Agent 的说明
