@@ -58,7 +58,9 @@ class ASNAV
     void setpointPublish();
     void set_mode(std::string mode);
     bool autoLand();
-    bool trackYoloDown(float max_distance = 0.35f, int tol = 30);
+    // 视觉向下追踪（速度环 + 到位位置锁存）
+    // 2026-10-09 由板卡同步：原位置增量 PID 版已被速度环版取代
+    bool trackYoloDown(float max_vel = 0.25f, int tol = 30, float lock_hold = 0.3f);
     bool trackYoloForward(float Kp_x, float Kp_y, float Kp_z, float target_box_height, int tol_xy, int tol_size);
     bool trackYoloing(float Kp_x, float Kp_y, float Kp_z, float target_box_height, int tol_xy, int tol_size);
     void reset_target();
@@ -191,6 +193,15 @@ class ASNAV
     std::string target_class_name;
     float integral_error_x, integral_error_y, last_err_x, last_err_y;
     ros::Time last_yolo_time_;
+    // ===== 2026-10-07 trackYoloDown（速度追踪 + 位置锁存）状态与增益 =====
+    bool      yolo_vel_hold_active_ = false;
+    double    yolo_vel_hold_px_ = 0.0, yolo_vel_hold_py_ = 0.0, yolo_vel_hold_pz_ = 0.0;
+    ros::Time yolo_vel_hold_entry_;
+    float     yolo_vel_last_err_x_ = 0.0f, yolo_vel_last_err_y_ = 0.0f;
+    ros::Time yolo_vel_last_time_;
+    float     yolo_vel_kp_ = 0.002f;            // 像素→水平速度 [m/s per px]
+    float     yolo_vel_kd_ = 0.0005f;           // 阻尼（按时间微分，不受帧率影响）
+    float     yolo_vel_vision_timeout_ = 0.3f;  // 视觉超时 [s]
     ros::Time last_yolo_d435i_time_;  // D435i最后识别时间
     //ar标签跟踪变量
     bool ar_marker_found_;

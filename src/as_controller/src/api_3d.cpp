@@ -1148,81 +1148,126 @@ bool ASNAV::autoLand()
     return true;
 }
 // 下视视觉跟随接口
-bool ASNAV::trackYoloDown(float max_distance, int tol)
+bool ASNAV::trackYoloDown(float max_vel, int tol, float lock_hold)
 {
-    float err_x = yolo_box_info.cameraXCenter - 320.0f;
-    float err_y = yolo_box_info.cameraYCenter - 240.0f;
+    ros::Time now = ros::Time::now();
 
-    // 1. PID 控制器计算 (增加 D 项用于刹车)
-    float Kp = 0.003f;
-    float Ki = 0.0002f;
-    float Kd = 0.005f; // 新增：微分系数，用于抑制震荡
-
-    integral_error_x += err_x;
-    integral_error_y += err_y;
-    // 缩小抗积分饱和的上限，防止累积误差过大导致冲过头
-    integral_error_x = std::clamp(integral_error_x, -500.0f, 500.0f);
-    integral_error_y = std::clamp(integral_error_y, -500.0f, 500.0f);
-
-    float diff_err_x = err_x - last_err_x;
-    float diff_err_y = err_y - last_err_y;
-
-    // 计算基础控制量
-    float u_x = Kp * err_x + Ki * integral_error_x + Kd * diff_err_x;
-    float u_y = Kp * err_y + Ki * integral_error_y + Kd * diff_err_y;
-
-    // 更新上一次误差
-    last_err_x = err_x;
-    last_err_y = err_y;
-
-    // 2. 将像素误差映射到机身坐标系 (Body Frame)
-    // 假设相机镜头向下：
-    // 目标在图像下方 (err_y > 0) -> 无人机需要向后飞 -> body_x 为负
-    // 目标在图像右方 (err_x > 0) -> 无人机需要向右飞 -> body_y 为正
-    float body_offset_x = -u_y; 
-    float body_offset_y = u_x;  // 注：你原代码这里是负的，可能会导致反向，请检查相机安装方向
-
-    // 3. 将机身坐标系旋转到 LOCAL_NED 坐标系
-    // 根据无人机当前的偏航角 (current_yaw) 进行 2D 旋转
-    float offset_x = body_offset_x * std::cos(current_yaw) - body_offset_y * std::sin(current_yaw);
-    float offset_y = body_offset_x * std::sin(current_yaw) + body_offset_y * std::cos(current_yaw);
-
-    // 4. 步长限幅
-    float step_mag = std::sqrt(offset_x * offset_x + offset_y * offset_y);
-    if (step_mag > max_distance) 
+    // ---- 0) 视觉失效保护 ----
+    if ((now - last_yolo_time_).toSec() > (double)yolo_vel_vision_timeout_)
     {
-        float scale = max_distance / step_mag;
-        offset_x *= scale;
-        offset_y *= scale;
+        ROS_WARN_THROTTLE(1.0, "[DownVel] 目标丢失 > %.2fs，零速悬停",
+                          (double)yolo_vel_vision_timeout_);
+        yolo_vel_hold_active_ = false;
+        yolo_vel_last_err_x_ = 0.0f;
+        yolo_vel_last_err_y_ = 0.0f;
+
+        target_position.header.stamp = now;
+        target_position.coordinate_frame = mavros_msgs::PositionTarget::FRAME_BODY_NED;
+        target_position.type_mask =
+            mavros_msgs::PositionTarget::IGNORE_PX |
+            mavros_msgs::PositionTarget::IGNORE_PY |
+            mavros_msgs::PositionTarget::IGNORE_PZ |
+            mavros_msgs::PositionTarget::IGNORE_AFX |
+            mavros_msgs::PositionTarget::IGNORE_AFY |
+            mavros_msgs::PositionTarget::IGNORE_AFZ |
+            mavros_msgs::PositionTarget::IGNORE_YAW;
+        target_position.velocity.x = 0.0f;
+        target_position.velocity.y = 0.0f;
+        target_position.velocity.z = 0.0f;
+        target_position.yaw_rate   = 0.0f;
+        return false;
     }
 
-    // 5. 发布控制指令
-    target_position.header.stamp = ros::Time::now();
-    target_position.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
-    target_position.type_mask = mavros_msgs::PositionTarget::IGNORE_VX |
-                                mavros_msgs::PositionTarget::IGNORE_VY |
-                                mavros_msgs::PositionTarget::IGNORE_VZ |
-                                mavros_msgs::PositionTarget::IGNORE_AFX |
-                                mavros_msgs::PositionTarget::IGNORE_AFY |
-                                mavros_msgs::PositionTarget::IGNORE_AFZ |
-                                mavros_msgs::PositionTarget::FORCE |
-                                mavros_msgs::PositionTarget::IGNORE_YAW_RATE;
+    // ---- 1) 像素误差（640x480，中心 320/240）----
+    float err_x = yolo_box_info.cameraXCenter - 320.0f;   // 右为正
+    float err_y = yolo_box_info.cameraYCenter - 240.0f;   // 下为正
+    bool aligned = (std::abs(err_x) < (float)tol && std::abs(err_y) < (float)tol);
 
-    target_position.position.x = current_position.x + offset_x;
-    target_position.position.y = current_position.y + offset_y;
-    target_position.position.z = current_position.z; // 保持当前高度
-    target_position.yaw = current_yaw;               // 保持当前航向
-
-    // 6. 成功对齐判定
-    if (std::abs(err_x) < tol && std::abs(err_y) < tol)
+    // ---- 2) 已对准：LOCAL_NED 位置锁存 ----
+    if (aligned)
     {
-        ROS_INFO("图像目标已对准");
-        // 对准后清除积分，防止下次追踪时带入旧的历史误差
-        integral_error_x = 0.0f;
-        integral_error_y = 0.0f;
-        return true;
+        if (!yolo_vel_hold_active_)
+        {
+            yolo_vel_hold_active_ = true;
+            yolo_vel_hold_px_ = current_position.x;
+            yolo_vel_hold_py_ = current_position.y;
+            yolo_vel_hold_pz_ = current_position.z;
+            yolo_vel_hold_entry_ = now;
+            ROS_INFO("[DownVel] 已对准，进入位置锁存 (%.3f, %.3f, %.3f)",
+                     yolo_vel_hold_px_, yolo_vel_hold_py_, yolo_vel_hold_pz_);
+        }
+
+        target_position.header.stamp = now;
+        target_position.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
+        target_position.type_mask =
+            mavros_msgs::PositionTarget::IGNORE_VX |
+            mavros_msgs::PositionTarget::IGNORE_VY |
+            mavros_msgs::PositionTarget::IGNORE_VZ |
+            mavros_msgs::PositionTarget::IGNORE_AFX |
+            mavros_msgs::PositionTarget::IGNORE_AFY |
+            mavros_msgs::PositionTarget::IGNORE_AFZ |
+            mavros_msgs::PositionTarget::FORCE |
+            mavros_msgs::PositionTarget::IGNORE_YAW_RATE;
+        target_position.position.x = yolo_vel_hold_px_;
+        target_position.position.y = yolo_vel_hold_py_;
+        target_position.position.z = yolo_vel_hold_pz_;
+        target_position.yaw = current_yaw;
+
+        if ((now - yolo_vel_hold_entry_).toSec() >= (double)lock_hold)
+        {
+            ROS_INFO("[DownVel] 锁存保持 %.2fs 完成，对齐成功", (double)lock_hold);
+            yolo_vel_hold_active_ = false;
+            return true;
+        }
+        return false;
     }
-    return false;   
+
+    // ---- 3) 追踪：机体系速度控制 ----
+    yolo_vel_hold_active_ = false;
+
+    double dt = yolo_vel_last_time_.isZero() ? 0.02 : (now - yolo_vel_last_time_).toSec();
+    dt = std::clamp(dt, 0.005, 0.2);          // 防除零 / 异常帧间隔
+    yolo_vel_last_time_ = now;
+
+    float d_err_x = (err_x - yolo_vel_last_err_x_) / (float)dt;
+    float d_err_y = (err_y - yolo_vel_last_err_y_) / (float)dt;
+    yolo_vel_last_err_x_ = err_x;
+    yolo_vel_last_err_y_ = err_y;
+
+    float u_x = yolo_vel_kp_ * err_x + yolo_vel_kd_ * d_err_x;
+    float u_y = yolo_vel_kp_ * err_y + yolo_vel_kd_ * d_err_y;
+
+    // 图像系 → 机体系（相机朝下）:
+    //   目标在图像下方(err_y>0) → 需要向后飞 → vx_body < 0
+    // 2026-10-07 实测修正：原本写 vy_body = u_x 时“目标在图像左侧→飞机往右飞”，符号反了。
+    //   原 trackYoloDown 里也有同样注记（“原代码这里是负的，可能会导致反向”），现按实测翻回负号。
+    float vx_body = -u_y;
+    float vy_body = -u_x;
+
+    // 水平合成速度限幅
+    float mag = std::hypot(vx_body, vy_body);
+    if (mag > max_vel && mag > 1e-6f)
+    {
+        float s = max_vel / mag;
+        vx_body *= s;
+        vy_body *= s;
+    }
+
+    target_position.header.stamp = now;
+    target_position.coordinate_frame = mavros_msgs::PositionTarget::FRAME_BODY_NED;
+    target_position.type_mask =
+        mavros_msgs::PositionTarget::IGNORE_PX |
+        mavros_msgs::PositionTarget::IGNORE_PY |
+        mavros_msgs::PositionTarget::IGNORE_PZ |
+        mavros_msgs::PositionTarget::IGNORE_AFX |
+        mavros_msgs::PositionTarget::IGNORE_AFY |
+        mavros_msgs::PositionTarget::IGNORE_AFZ |
+        mavros_msgs::PositionTarget::IGNORE_YAW;
+    target_position.velocity.x = vx_body;
+    target_position.velocity.y = vy_body;
+    target_position.velocity.z = 0.0f;      // 垂直速度 0：保持高度
+    target_position.yaw_rate   = 0.0f;      // 保持当前航向
+    return false;
 }
 // 正向视觉跟随接口
 bool ASNAV::trackYoloForward(float Kp_x, float Kp_y, float Kp_z, float target_box_height, int tol_xy, int tol_size)
