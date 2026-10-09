@@ -3,7 +3,7 @@
 
     <node pkg="as_controller" type="asnav_3d_node" name="asnav_3d_node" output="screen">  
         <param name="target_class_name" type="string" value="red_ballon" /> 
-        <param name="fly_height" type="double" value="0.6" /> 
+        <param name="fly_height" type="double" value="0.45" /> 
         <param name="descend_z" type="double" value="1.4" /> 
         <!-- 导航轴策略全局默认：接口 nav_mode<0 时使用（0=全跟规划器 1=只Z 2=只Yaw 3=锁高并锁0） -->
         <param name="nav_default_mode" type="int" value="3" />
@@ -32,7 +32,16 @@
         <param name="ego_rotate_180"     type="bool"   value="false" /> <!-- ego 轨迹 180°旋转，默认 false：LIO系=PX4 local -->
         <param name="super_max_accel"    type="double" value="3.0" />
 
-
+        <!-- 轮廓控制（contouring control）参数（2026-10-08 新增）
+             enable=false 时 navigationSuper 完全走原各向同性控制律，行为与改动前一致。
+             启用方式：① 把 enable 改 true（全局）；② 调用 navigationSuperContour / navigationSuperContourRviz 接口。
+             含义：kp_t 切向（沿轨迹，放松保速度）、kp_n 法向（垂直轨迹，收紧贴路径）、
+                   ff_t 切向前馈（接近 1.0 可消除稳态滞后）、min_spd 低于此值退化为各向同性。 -->
+        <param name="super_contour_enable"  type="bool"   value="false" />
+        <param name="super_contour_kp_t"    type="double" value="0.6" />
+        <param name="super_contour_kp_n"    type="double" value="1.6" />
+        <param name="super_contour_ff_t"    type="double" value="0.9" />
+        <param name="super_contour_min_spd" type="double" value="0.15" />
 
         <!-- 第一梯队：三段式增益 -->
         <param name="ego_kp_outer"     type="double" value="1.4" />   <!-- Kp: 位置误差→速度修正 -->

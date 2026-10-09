@@ -12,7 +12,7 @@
  *  ║     School    : SWPU                                         ║
  *  ║     QQ        : 3402442153                                   ║
  *  ║                                                              ║
- *  ║     ✨ 欢迎交流讨论，有问题或建议欢迎随时联系！ ✨              ║
+ *  ║     ✨ 欢迎交流讨论，有问题或建议欢迎随时联系！ ✨                 ║
  *  ║     Feel free to reach out for questions or suggestions!     ║
  *  ║                                                              ║
  *  ╚══════════════════════════════════════════════════════════════╝
@@ -54,7 +54,7 @@ int main(int argc, char** argv)
             break;
 
         case 1:  
-            if (uav.navigationSuperRviz())
+            if (uav.navigationSuperContourRviz(0))
             {
                 ROS_WARN("完成！！！");
                 mission_num = 2;

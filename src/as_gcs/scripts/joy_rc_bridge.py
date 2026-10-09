@@ -77,13 +77,17 @@ AXIS_SCALE = 32767.0
 NCHAN = 18
 
 # (joystick 编号, 目标通道号(1-based), 是否反向)
+#
+# 反向位的依据：QGC 里 TX12 的配置是 Axis1Rev=true（其余三轴都是 false），
+# 也就是 Pitch 轴需要反向。桥直接绕过 QGC，所以必须自己把这个反向带上，
+# 否则俯仰会反。
 AXIS_MAP = [
     (0, 1, False),   # 右摇杆水平 -> Roll
-    (1, 2, False),   # 右摇杆垂直 -> Pitch
+    (1, 2, True),    # 右摇杆垂直 -> Pitch（反向，对齐 QGC 的 Axis1Rev=true）
     (2, 3, False),   # 左摇杆垂直 -> Throttle
     (3, 4, False),   # 左摇杆水平 -> Yaw
     (6, 7, False),   # 开关 C 三档 -> 模式
-    (7, 8, True),    # 开关 F 三档 -> offboard（反向：低值=高PWM）
+    (7, 8, True),    # 开关 F 三档 -> offboard（反向：低轴值 = 高 PWM）
 ]
 
 BUTTON_MAP = [

@@ -26,6 +26,8 @@
   <build_depend>yolov8_ros_msgs</build_depend>
   <build_depend>yolov11_ros_msgs</build_depend>
   <build_depend>ar_track_alvar_msgs</build_depend>
+  <build_depend>as_gcs</build_depend>
+  <exec_depend>as_gcs</exec_depend>
 
   <!-- Export dependencies -->
   <build_export_depend>roscpp</build_export_depend>
