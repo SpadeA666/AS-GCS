@@ -284,7 +284,24 @@ export default function App() {
   );
 
   const poseTopics = useMemo(() => POSE_TOPIC_CANDIDATES(topics), [topics]);
-  const poseTopic = poseTopics[0] ?? "";
+  /**
+   * 无人机位姿话题：**按优先级选，不能取列表第一个**。
+   *
+   * 候选只按 schema 筛（nav_msgs/Odometry 或 geometry_msgs/PoseStamped），
+   * 里面同时有 MAVROS 的位姿和 LIO 的里程计。之前取 [0]，
+   * SUPER 下恰好是 MAVROS 的；一换到 EGO 话题集合变了、顺序也变了，
+   * 就可能指到别的（甚至没数据的）话题上，表现就是“收不到无人机位姿”。
+   *
+   * 约定：MAVROS 的 local_position 最稳（PX4 EKF 输出），优先用它。
+   */
+  const POSE_PREFERRED = [
+    "/iris_0/mavros/local_position/pose",
+    "/iris_0/mavros/local_position/odom",
+    "/mavros/local_position/pose",
+    "/mavros/local_position/odom",
+  ];
+  const poseTopic =
+    POSE_PREFERRED.find((p) => poseTopics.includes(p)) ?? poseTopics[0] ?? "";
 
   /** 图像话题（CompressedImage 优先） */
   const imageTopics = useMemo(
