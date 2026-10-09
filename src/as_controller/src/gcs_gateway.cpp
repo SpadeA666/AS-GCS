@@ -19,6 +19,7 @@
  */
 #include "api_3d.h"
 #include <as_gcs/Takeoff.h>
+#include <as_gcs/CancelTakeoff.h>
 #include <as_gcs/Land.h>
 #include <as_gcs/FlyUp.h>
 #include <as_gcs/FlyDown.h>
@@ -90,6 +91,8 @@ class GcsGateway {
       : nh_(nh), uav_(nh) {
     // ── 服务注册：回调一律只登记，不执行 ──
     srv_takeoff_ = nh_.advertiseService("/gcs/takeoff", &GcsGateway::onTakeoff, this);
+    srv_cancel_takeoff_ =
+        nh_.advertiseService("/gcs/cancel_takeoff", &GcsGateway::onCancelTakeoff, this);
     srv_land_ = nh_.advertiseService("/gcs/land", &GcsGateway::onLand, this);
     srv_fly_up_ = nh_.advertiseService("/gcs/fly_up", &GcsGateway::onFlyUp, this);
     srv_fly_down_ = nh_.advertiseService("/gcs/fly_down", &GcsGateway::onFlyDown, this);
@@ -272,6 +275,33 @@ class GcsGateway {
         uav_.set_mode("AUTO.LOITER");
         break;
 
+      case CmdType::ABORT:
+        // 取消进行中的任务（当前用于取消起飞）。
+        // 分三种情况，区别在“有没有已经解锁” —— 没解锁就干净退出，
+        // 解锁了才需要切模式让飞机保持安全状态。
+        if (preflight_ != PreFlight::NONE) {
+          const bool was_armed = mav_state_.armed;
+          preflight_ = PreFlight::NONE;
+          preflight_ticks_ = 0;
+          task_ = Task::IDLE;
+          if (was_armed) {
+            // 已经 arm 了，切 LOITER 让 PX4 自己悬停。
+            // 取消后网关不再对该目标负责，留在 OFFBOARD 反而更难处理。
+            uav_.set_mode("AUTO.LOITER");
+            ROS_WARN("[gcs_gateway] 起飞已取消：序列中止，切 AUTO.LOITER 悬停");
+          } else {
+            ROS_WARN("[gcs_gateway] 起飞已取消：序列中止（未解锁，未 arm）");
+          }
+        } else if (task_ == Task::TAKEOFF_CLIMB) {
+          task_ = Task::IDLE;
+          uav_.set_mode("AUTO.LOITER");
+          ROS_WARN("[gcs_gateway] 起飞已取消：停止爬升（当前高度 %.2f m），切 AUTO.LOITER",
+                   cur_z_);
+        } else {
+          ROS_INFO("[gcs_gateway] 取消请求收到，但当前没有进行中的任务");
+        }
+        break;
+
       default:
         break;
     }
@@ -402,6 +432,33 @@ class GcsGateway {
     res.success = true;
     res.message = "已受理（起飞为不可逆动作，请确认现场安全）";
     ROS_WARN("[gcs_gateway] 收到起飞请求 h=%.2f", req.height);
+    return true;
+  }
+
+  bool onCancelTakeoff(as_gcs::CancelTakeoff::Request&, as_gcs::CancelTakeoff::Response& res) {
+    // 判断当前是否真有进行中的起飞，好给前端一个准确答复
+    const bool in_preflight = (preflight_ != PreFlight::NONE);
+    const bool climbing = (task_ == Task::TAKEOFF_CLIMB);
+
+    if (!in_preflight && !climbing) {
+      res.success = false;
+      res.message = "当前没有进行中的起飞（可能已到达高度，或还没点击起飞）";
+      ROS_INFO("[gcs_gateway] 取消起飞：无进行中的序列");
+      return true;
+    }
+
+    enqueue([&](Command& c) { c.type = CmdType::ABORT; c.s = "cancel_takeoff"; });
+
+    if (in_preflight) {
+      res.success = true;
+      res.message = mav_state_.armed ? "已受理：将中止起飞序列并切悬停（注意已解锁）"
+                                     : "已受理：将中止起飞序列（尚未解锁，不会 arm）";
+    } else {
+      res.success = true;
+      res.message = "已受理：将停止爬升并在当前高度悬停";
+    }
+    ROS_WARN("[gcs_gateway] 收到取消起飞请求（preflight=%d, climbing=%d）",
+             static_cast<int>(in_preflight), static_cast<int>(climbing));
     return true;
   }
 
@@ -736,7 +793,7 @@ class GcsGateway {
   ros::NodeHandle nh_;
   ASNAV uav_;
 
-  ros::ServiceServer srv_takeoff_, srv_land_, srv_fly_up_, srv_fly_down_;
+  ros::ServiceServer srv_takeoff_, srv_cancel_takeoff_, srv_land_, srv_fly_up_, srv_fly_down_;
   ros::ServiceServer srv_goto_, srv_goto_planner_, srv_planner_, srv_nav_mode_,
       srv_start_follow_, srv_stop_follow_;
   ros::ServiceServer srv_align_, srv_actuator_, srv_geofence_, srv_estop_;

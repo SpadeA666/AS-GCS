@@ -17,6 +17,7 @@ add_message_files(FILES
 
 add_service_files(FILES
   Takeoff.srv
+  CancelTakeoff.srv
   Land.srv
   FlyUp.srv
   FlyDown.srv

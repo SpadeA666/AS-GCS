@@ -21,6 +21,7 @@ import { NumberField } from "./NumberField";
 
 export const SVC = {
   takeoff: "/gcs/takeoff",
+  cancelTakeoff: "/gcs/cancel_takeoff",
   land: "/gcs/land",
   flyUp: "/gcs/fly_up",
   flyDown: "/gcs/fly_down",
@@ -93,6 +94,8 @@ export function ControlPanel({
   const [laserOn, setLaserOn] = useState(false);
   /** 起飞目标高度（m）——以前写死 1.0 */
   const [takeoffHeight, setTakeoffHeight] = useState(1.0);
+  /** 起飞二次确认弹窗是否打开（起飞会真实解锁，不能一点就飞） */
+  const [confirmTakeoff, setConfirmTakeoff] = useState(false);
   /** 上升/下降的目标高度（m，绝对值）——以前是增量 delta，写死 0.5 */
   const [climbTarget, setClimbTarget] = useState(1.5);
   /**
@@ -181,8 +184,9 @@ export function ControlPanel({
 
         <div className="row">
           <button
+            className="btn-danger"
             disabled={disabled}
-            onClick={() => call(SVC.takeoff, { height: takeoffHeight }, `起飞到 ${takeoffHeight.toFixed(2)}m`)}
+            onClick={() => setConfirmTakeoff(true)}
           >
             起飞
           </button>
@@ -196,6 +200,13 @@ export function ControlPanel({
             title="起飞目标高度（m）"
           />
           <span className="unit">m</span>
+          <button
+            disabled={disabled}
+            onClick={() => call(SVC.cancelTakeoff, {}, "取消起飞")}
+            title="中止正在进行的起飞序列（未解锁时直接终止；已解锁则切悬停）"
+          >
+            取消起飞
+          </button>
           <button
             className="btn-danger"
             disabled={disabled}
@@ -506,6 +517,53 @@ export function ControlPanel({
             : "未启用；绘制后点「启用并下发」才生效。校验在 ROS 侧强制，前端只是可视化"}
         </div>
       </div>
+
+      {confirmTakeoff && (
+        <div
+          className="wp-confirm"
+          style={{
+            position: "fixed",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            zIndex: 1000,
+            minWidth: 280,
+          }}
+        >
+          <div className="wp-confirm-head">
+            <b>确认起飞</b>
+            <span className="muted">不可逆动作</span>
+          </div>
+          <div className="wp-confirm-body">
+            <div>
+              <span className="k">目标高度</span> {takeoffHeight.toFixed(2)} m
+            </div>
+            <div style={{ marginTop: 6 }}>
+              <span className="k">序列</span> 建流 → 切 OFFBOARD → 解锁 → 爬升
+            </div>
+            <div className="wp-confirm-warn">
+              ⚠ 起飞会真实解锁电机。请确认现场安全、桨叶无人。
+              误点可用下方的「取消起飞」中止（未解锁前取消是安全的）。
+            </div>
+          </div>
+          <div className="wp-confirm-actions">
+            <button
+              className="primary"
+              onClick={() => {
+                setConfirmTakeoff(false);
+                call(
+                  SVC.takeoff,
+                  { height: takeoffHeight },
+                  `起飞到 ${takeoffHeight.toFixed(2)}m`,
+                );
+              }}
+            >
+              确认起飞
+            </button>
+            <button onClick={() => setConfirmTakeoff(false)}>取消</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

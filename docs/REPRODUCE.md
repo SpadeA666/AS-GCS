@@ -273,8 +273,8 @@ bash install-desktop-icon.sh --remove     # 卸载
 **服务清单**（前端按钮对应的接口，`as_gcs/srv/`）：
 
 ```
-takeoff / land / fly_up / fly_down / go_to_px4 / go_to_planner / set_planner /
-set_nav_mode / start_follow / stop_follow / align_target / set_actuator /
+takeoff / cancel_takeoff / land / fly_up / fly_down / go_to_px4 / go_to_planner /
+set_planner / set_nav_mode / start_follow / stop_follow / align_target / set_actuator /
 set_geofence / emergency_stop / camera_control / yolo_control
 ```
 

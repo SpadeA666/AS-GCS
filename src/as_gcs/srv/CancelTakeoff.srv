@@ -1,0 +1,11 @@
+# 取消进行中的起飞序列。
+#
+# 三种情况的行为：
+#   1. 前置阶段（FLOW / WAIT_OFFBOARD，还没解锁）→ 直接中止，不会 arm
+#   2. 前置阶段已解锁（WAIT_ARM 期间）        → 中止并切 AUTO.LOITER 悬停
+#   3. 已经在爬升（TAKEOFF_CLIMB）            → 停止爬升，在当前高度切 LOITER
+#
+# 没有进行中的起飞时返回 success=false，message 说明原因。
+---
+bool success
+string message
