@@ -44,8 +44,18 @@ interface Props {
   onViewChange: (v: { x: number; y: number; scale: number }) => void;
   /** 当前选中的规划器，决定打点发到哪个 goal 话题 */
   planner: "ego" | "super";
-  /** 新点默认高度（heightMode=absolute 时用） */
+  /** 新点默认高度（heightMode=absolute 时用）；也是「保持高度」的兜底初值 */
   defaultHeight: number;
+  /**
+   * 「保持高度」打点时用的高度：记录【最近一次确定的高度设定】
+   * （起飞 / 上升下降 / 上一次指定高度打点），由父层统一维护。
+   *
+   * 以前这里取 drone.z（打点瞬间的实际高度）——飞机在升降过程中或悬停
+   * 波动时打点会取到中间值，和设定过的值对不上，也就是「保持点没真正保持」。
+   */
+  holdHeight?: number;
+  /** 「指定高度」打点确认后把该高度上报，作为后续「保持」的新基准 */
+  onHeightCommit?: (h: number) => void;
   /** 飞行轨迹（扁平 [x,y,z,...]） */
   trajectory?: number[];
   /** 规划器路径（扁平） */
@@ -110,6 +120,8 @@ export function Map2DPanel({
   onViewChange,
   planner,
   defaultHeight,
+  holdHeight = defaultHeight,
+  onHeightCommit,
   trajectory,
   planPath,
   expTraj,
@@ -376,9 +388,8 @@ export function Map2DPanel({
     for (const wp of waypoints) {
       const [sx, sy] = toScreen(wp.x, wp.y);
       const isPlanner = wp.kind === "planner";
-      // 已确认的点也标出越界（保持高度时用真实高度判定）
-      const effZ = wp.heightMode === "hold" ? (drone?.z ?? 0) : wp.z;
-      const wpBad = !geofenceCheck(geofence, wp.x, wp.y, effZ).ok;
+      // 已确认的点也标出越界；wp.z 在发送那一刻就已固化（保持模式 = 当时的 holdHeight）
+      const wpBad = !geofenceCheck(geofence, wp.x, wp.y, wp.z).ok;
       const wpCol = wpBad ? "#ff5f5f" : isPlanner ? "#4ea1ff" : "#e0a030";
       ctx.strokeStyle = "#0f1216";
       ctx.lineWidth = 2.5;
@@ -420,7 +431,9 @@ export function Map2DPanel({
 
       ctx.fillStyle = "#c8d0da";
       ctx.font = "11px ui-monospace, monospace";
-      const hTxt = wp.heightMode === "hold" ? "保持高" : `${wp.z.toFixed(1)}m`;
+      // 保持点也把实际高度写出来，一眼能看出「保持」到了多少
+      const hTxt =
+        wp.heightMode === "hold" ? `保持 ${wp.z.toFixed(1)}m` : `${wp.z.toFixed(1)}m`;
       ctx.fillText(`${wp.id}  ${hTxt}`, sx + 12, sy - 9);
     }
 
@@ -537,10 +550,8 @@ export function Map2DPanel({
     if (pending) {
       const [sx, sy] = toScreen(pending.x, pending.y);
       // 实时预判安全区：越界就整个变红（包括朝向箭头），
-      // 不用等点下去被网关拒绝才知道。“保持当前高度”用真实高度判定，
-      // 否则会拿占位的 0 去比 z 范围，误报高度越界。
-      const effZ = pending.heightMode === "hold" ? (drone?.z ?? 0) : pending.z;
-      const bad = !geofenceCheck(geofence, pending.x, pending.y, effZ).ok;
+      // 不用等点下去被网关拒绝才知道。pending.z 在构造时已定，没有占位 0 的坑了。
+      const bad = !geofenceCheck(geofence, pending.x, pending.y, pending.z).ok;
       const c = bad ? "#ff5f5f" : pending.kind === "planner" ? "#4ea1ff" : "#e0a030";
       ctx.strokeStyle = c;
       ctx.setLineDash([4, 3]);
@@ -679,15 +690,12 @@ export function Map2DPanel({
 
   const confirmPending = () => {
     if (!pending) return;
-    // “保持当前高度”必须用【确认发送那一刻】的实际高度。
-    // pending.z 在 hold 模式下只是构造时的占位 0，直接发出去会把飞机一路拉到地面
-    // —— 这就是打点“掉高”的根源（planner 点和 PX4 点走同一个 sendWaypoint，两者都中招）。
-    if (pending.heightMode === "hold" && !drone) {
-      onLog?.("打点失败：还没收到无人机位姿，「保持当前高度」无高度可用（先确认已连接）");
-      return;
-    }
-    const z = pending.heightMode === "hold" ? (drone?.z ?? pending.z) : pending.z;
-    sendWaypoint({ ...pending, z });
+    // pending.z 在构造时已定好：绝对模式 = 输入值，保持模式 = holdHeight。
+    // 「保持」不再读打点瞬间的实际高度——升降途中/悬停波动时取到的中间值
+    // 和设定值对不上，那正是「保持点没真正保持」的原因。
+    sendWaypoint(pending);
+    // 「指定高度」打点后，该高度成为后续「保持」的新基准
+    if (pending.heightMode === "absolute") onHeightCommit?.(pending.z);
     setPending(undefined);
   };
 
@@ -791,7 +799,9 @@ export function Map2DPanel({
       kind: pendingKind,
       x: w.x,
       y: w.y,
-      z: heightMode === "absolute" ? heightInput : 0,
+      // 绝对模式用输入值；保持模式直接用 holdHeight（最近一次确定的高度设定），
+      // 构造时就把 z 定下来
+      z: heightMode === "absolute" ? heightInput : holdHeight,
       heightMode,
       yaw: yawDeg,
     });
@@ -951,7 +961,9 @@ export function Map2DPanel({
                   </div>
                   <div>
                     <span className="k">高度</span>{" "}
-                    {pending.heightMode === "hold" ? "保持当前" : `${pending.z.toFixed(2)} m`}
+                    {pending.heightMode === "hold"
+                      ? `保持 ${pending.z.toFixed(2)} m（最近一次高度设定）`
+                      : `${pending.z.toFixed(2)} m`}
                   </div>
                   <div>
                     <span className="k">机头</span> {pending.yaw}°
@@ -959,8 +971,7 @@ export function Map2DPanel({
                 </div>
                 {/* 安全区实时预判：点确认之前就能看出会不会被网关拒 */}
                 {(() => {
-                  const effZ = pending.heightMode === "hold" ? (drone?.z ?? 0) : pending.z;
-                  const v = geofenceCheck(geofence, pending.x, pending.y, effZ);
+                  const v = geofenceCheck(geofence, pending.x, pending.y, pending.z);
                   if (v.ok) return null;
                   return (
                     <div className="wp-confirm-warn">⚠ 越界：{v.reason}（网关侧会拒绝）</div>

@@ -72,6 +72,11 @@ interface Props {
    * 所以要拿当前高度换算：上升 delta = 目标 − 当前，下降 delta = 当前 − 目标。
    */
   currentZ?: number;
+  /**
+   * 提交一个新的【高度基准】：网关确认该动作成功后调用。
+   * 2D 打点的「保持」模式用的就是这个值，而不是打点瞬间的实际高度。
+   */
+  onHeightCommit?: (h: number) => void;
 }
 
 export function ControlPanel({
@@ -89,6 +94,7 @@ export function ControlPanel({
   fenceMode = false,
   onFenceModeChange,
   currentZ,
+  onHeightCommit,
 }: Props) {
   const [busy, setBusy] = useState<string | undefined>(undefined);
   /** 待确认的规划器切换目标（undefined = 没在弹确认） */
@@ -118,7 +124,7 @@ export function ControlPanel({
   const has = (svc: string) => services.has(svc);
 
   const call = useCallback(
-    async (svc: string, req: unknown, label: string) => {
+    async (svc: string, req: unknown, label: string, onOk?: () => void) => {
       if (!conn) {
         onLog(`${label}: 未连接`);
         return;
@@ -133,6 +139,9 @@ export function ControlPanel({
         const ok = res?.success ?? true;
         const msg = (res?.message as string) ?? "";
         onLog(`${label}: ${ok ? "成功" : "失败"}${msg ? " — " + msg : ""}`);
+        // 只在网关确认成功后才让调用方提交状态（如高度基准），
+        // 被拒绝/异常时不能把基准改掉
+        if (ok) onOk?.();
       } catch (e) {
         onLog(`${label}: 调用异常 — ${String(e)}`);
       } finally {
@@ -239,6 +248,7 @@ export function ControlPanel({
                 SVC.flyUp,
                 { delta },
                 `上升到 ${climbTarget.toFixed(2)}m（Δ${delta.toFixed(2)}）`,
+                () => onHeightCommit?.(climbTarget),
               );
             }}
           >
@@ -256,6 +266,7 @@ export function ControlPanel({
                 SVC.flyDown,
                 { delta },
                 `下降到 ${climbTarget.toFixed(2)}m（Δ${delta.toFixed(2)}）`,
+                () => onHeightCommit?.(climbTarget),
               );
             }}
           >
@@ -578,6 +589,7 @@ export function ControlPanel({
                   SVC.takeoff,
                   { height: takeoffHeight },
                   `起飞到 ${takeoffHeight.toFixed(2)}m`,
+                  () => onHeightCommit?.(takeoffHeight),
                 );
               }}
             >

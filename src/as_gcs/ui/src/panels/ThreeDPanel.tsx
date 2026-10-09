@@ -53,7 +53,6 @@ export function ThreeDPanel({
   const hostRef = useRef<HTMLDivElement>(null);
   const mgrRef = useRef<SceneManager | undefined>(undefined);
   const unsubRef = useRef(new Map<string, () => void>());
-  const framedRef = useRef(false);
 
   const [stats, setStats] = useState<Record<string, { pts: number; hz: number }>>({});
 
@@ -113,11 +112,11 @@ export function ThreeDPanel({
         if (parsed.count > 60000) parsed = voxelDownsample(parsed, 0.1);
         lastCount = parsed.count;
 
-        const bounds = mgrRef.current?.setCloudLayer(topic, parsed);
-        if (!framedRef.current && bounds) {
-          mgrRef.current?.frameCloud(bounds);
-          framedRef.current = true;
-        }
+        // 只塞数据，不动相机。
+        // 以前首次收到点云会调 frameCloud() 自动取景，于是"连接一点云，
+        // 视角就被拉远（缩小）"，用户刚调好的视角被抢走。
+        // 现在相机完全由用户控制：等距/俯视按钮 + 鼠标。
+        mgrRef.current?.setCloudLayer(topic, parsed);
 
         frames++;
         const elapsed = (performance.now() - t0) / 1000;
@@ -130,10 +129,6 @@ export function ThreeDPanel({
       unsubRef.current.set(topic, unsub);
     }
   }, [conn, wanted]);
-
-  useEffect(() => {
-    if (wanted.length === 0) framedRef.current = false;
-  }, [wanted.length]);
 
   useEffect(
     () => () => {

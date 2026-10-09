@@ -157,7 +157,15 @@ export class SceneManager {
     this.invalidate();
   }
 
-  /** 让视图对准点云大致中心 */
+  /**
+   * 让视图对准点云大致中心。
+   *
+   * ⚠ 目前**没有 UI 入口，也不要再从点云回调里自动调用本方法**。
+   *   以前首次收到点云就 frameCloud() 自动取景，结果连接后点云一出来，
+   *   相机被按包围盒拉远（看上去就像整个画面“缩小”了），用户刚调好的
+   *   视角被抢走。现在视角只由用户控制（等距/俯视按钮 + 鼠标）。
+   *   留着是为了以后加一个“适应点云”按钮。
+   */
   frameCloud(bounds: { min: THREE.Vector3; max: THREE.Vector3 } | undefined): void {
     if (!bounds) return;
     // bounds 是 ROS 坐标；相机与控制器在 three 世界，必须转换
@@ -190,15 +198,22 @@ export class SceneManager {
   /**
    * 正俯视，方向与 2D 地图保持一致：ROS 的 X 朝屏幕上方、Y 朝屏幕左。
    *
-   * 为什么必须改 camera.up：相机在正上方时，如果 up 还是 three 默认的 (0,1,0)，
-   * 它就与视线方向平行，lookAt 退化成不确定的朝向，画面会“旋”到一个奇怪角度。
-   * 把 up 设为 three 的 +X（对应 ROS 的 X/东），屏幕上方就是 +X；
-   * 此时相机右向 = three +Z = ROS -Y，所以 Y（北）落在屏幕左侧。
+   * ⚠ 以前这里把 camera.up 改成 three 的 +X 来避开 lookAt 退化 —— 但
+   *   OrbitControls 是**拿 camera.up 当极轴**的，改了它旋转轴就整个换了一套，
+   *   俯视下拖拽的手感与等距视图完全不同（构造函数里也写了“不要动 camera.up”）。
+   *
+   *   现在：up 保持 three 默认的 Y-up（与等距共用同一套操作），
+   *   把相机放在目标【-X 侧】稍微偏一点的上方：
+   *     · 视线与 up 不再平行，lookAt 不会退化；
+   *     · 相机 y 轴（屏幕上方）正好指向 three +X = ROS +X（东），与 2D 一致；
+   *     · 屏幕右方是 three +Z = ROS -Y，所以北（+Y）落在屏幕左侧。
+   *   水平偏移只有 0.14·d（约 8°），视觉上仍是俯视。
    */
   topView(): void {
     const t = this.#controls.target.clone();
-    this.camera.up.set(1, 0, 0);
-    this.camera.position.set(t.x, t.y + 18, t.z);
+    this.camera.up.set(0, 1, 0);
+    const d = 14;
+    this.camera.position.set(t.x - d * 0.14, t.y + d, t.z);
     this.camera.lookAt(t);
     this.#controls.update();
     this.invalidate();

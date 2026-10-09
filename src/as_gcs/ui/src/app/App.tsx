@@ -12,6 +12,7 @@ import {
 import { TfBuffer } from "../core/TfBuffer";
 import { ThreeDPanel } from "../panels/ThreeDPanel";
 import { Map2DPanel, POSE_TOPIC_CANDIDATES, type Waypoint } from "../panels/Map2DPanel";
+import { parseExpTrajMarkers } from "../core/expTraj";
 import { ControlPanel, type CameraMode, type Planner } from "../panels/ControlPanel";
 import { ImagePanel } from "../panels/ImagePanel";
 import type { Geofence, DronePose } from "../core/types";
@@ -68,6 +69,13 @@ export default function App() {
   const [plannerStatus, setPlannerStatus] = useState<string>("ready super");
   const [cameraMode, setCameraMode] = useState<CameraMode>("off");
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
+  /**
+   * 「保持高度」基准：最近一次确定的高度设定（起飞 / 上升下降 / 指定高度打点）。
+   * 2D 打点选「保持」时用的就是它，而不是打点瞬间的实际高度——
+   * 升降途中或悬停波动时取到的中间值会让「保持点」名不副实。
+   * 初值与起飞默认高度一致，且提升到父层，切视图不丢。
+   */
+  const [holdHeight, setHoldHeight] = useState(1.0);
   /** 2D 视图状态（也提升，切回时保持位置和缩放） */
   const [map2d, setMap2d] = useState({ x: 0, y: 0, scale: 55 });
   /** 飞行轨迹（扁平 [x,y,z,...]，ROS 系）。提升到父层，切视图不丢 */
@@ -328,11 +336,21 @@ export default function App() {
     return hit ?? boxes[0];
   }, [topics, selectedImage]);
 
-  /** 规划路径话题：优先 fsm_node（SUPER），否则取第一个 nav_msgs/Path */
+  /**
+   * 规划路径话题（橙线）。
+   *
+   * ⚠ 同 inflatedCloudTopic 的坑：切规划器只是停节点，两侧话题都还留在
+   *   bridge 的频道表里。SUPER 的 /fsm_node/fsm/path 在 EGO 下已成空壳
+   *   （实测 rostopic hz = no new messages），却因为写死了「优先含 fsm」
+   *   而被一直选中 —— 橙线永远画不出来。
+   *   EGO 没有 nav_msgs/Path 形态的路径（它的路径是 optimal_list 那条
+   *   Marker 折线，由 expTraj 通道负责），所以 EGO 下这里就空着。
+   */
   const pathTopic = useMemo(() => {
+    if (planner === "ego") return "";
     const paths = topics.filter((t) => t.schemaName === "nav_msgs/Path").map((t) => t.topic);
     return paths.find((t) => t.includes("fsm")) ?? paths[0] ?? "";
-  }, [topics]);
+  }, [topics, planner]);
 
   /** 原生点云：优先 super_cloud，其次 cloud_registered */
   const rawCloudTopic = useMemo(() => {
@@ -471,18 +489,29 @@ export default function App() {
    *   EGO   -> /drone_0_ego_planner_node/optimal_list（单个 Marker）
    * 两个规划器命名不同，依次匹配。
    */
-  const expTrajTopic = useMemo(
-    () =>
-      topics.find((x) => x.topic.includes("visualization/exp_traj"))?.topic ??
-      topics.find((x) => x.topic.includes("optimal_list"))?.topic ??
-      "",
-    [topics],
-  );
+  /**
+   * 期望轨迹话题：
+   *   SUPER -> /fsm_node/visualization/exp_traj（MarkerArray）
+   *   EGO   -> /drone_0_ego_planner_node/optimal_list（单个 Marker，LINE_STRIP）
+   *
+   * ⚠ 必须【按当前规划器优先】，不能写成 `A ?? B`：切到 EGO 后 SUPER 的
+   *   /fsm_node/visualization/exp_traj 话题名还留在 bridge 频道表里（节点停了，
+   *   注册不一定会清），实测已 no new messages，但依然会被 `??` 优先命中，
+   *   于是 EGO 的 optimal_list 永远取不到 —— 表现就是「切到 EGO 后路径没了」。
+   *   这与 inflatedCloudTopic 是同一个坑。
+   */
+  const expTrajTopic = useMemo(() => {
+    const sup = topics.find((x) => x.topic.includes("visualization/exp_traj"))?.topic;
+    const ego = topics.find((x) => x.topic.includes("optimal_list"))?.topic;
+    return planner === "ego" ? (ego ?? sup ?? "") : (sup ?? ego ?? "");
+  }, [topics, planner]);
 
   /** 诊断用：实际收到的 ExpTraj 消息数与见过的最大折线段数 */
   const [expTrajStat, setExpTrajStat] = useState({ msgs: 0, segs: 0 });
   /** 只在第一次收到时打一条日志，避免刷屏 */
   const expTrajLoggedRef = useRef(false);
+  /** 「marker 全被类型过滤」只提醒一次 */
+  const expTrajWarnRef = useRef(false);
 
   // ── 订阅 SUPER 的期望轨迹（rviz 里的 ExpTraj）──
   // 它是 MarkerArray，不能按 nav_msgs/Path 解析，得从 markers[].points 里取折线。
@@ -495,47 +524,13 @@ export default function App() {
     pushLog(`已订阅 ExpTraj: ${expTrajTopic}`);
     expTrajLoggedRef.current = false;
     return conn.subscribe(expTrajTopic, (msg) => {
-      // 两种来源结构不同：
-      //   SUPER -> MarkerArray，消息里有 markers[]
-      //   EGO   -> 单个 Marker，消息本身就是一条（有 points/type/color）
-      // 统一归一化成数组再走后面的解析。
-      type Mk = {
-        type?: number;
-        points?: { x: number; y: number; z: number }[];
-        color?: { r: number; g: number; b: number; a: number };
-      };
-      const m = msg as Mk & { markers?: Mk[] };
-      const markers = m.markers;
-      const list: Mk[] = Array.isArray(markers)
-        ? markers
-        : m.points
-          ? [{ type: m.type, points: m.points, color: m.color }]
-          : [];
-      if (list.length === 0) return;
-      const out: number[] = [];
-      let col: string | undefined;
-      for (const mk of list) {
-        // SUPER 的轨迹用的是 ARROW（ros1_adapter.hpp 里 line_list.type = Marker::ARROW），
-        // 每个 marker 是一小段（points = [起点, 终点]）；航点是 SPHERE 不带线段。
-        // 所以三种都要收：ARROW=0 / LINE_STRIP=4 / LINE_LIST=5。
-        if (mk.type !== 0 && mk.type !== 4 && mk.type !== 5) continue;
-        if (!Array.isArray(mk.points)) continue;
-        for (const p of mk.points) {
-          // 相邻重复点会让 2D 描边出现断面，顺手去重
-          const n = out.length;
-          if (n >= 3 && n % 3 === 0) {
-            const dx = p.x - out[n - 3];
-            const dy = p.y - out[n - 2];
-            const dz = p.z - out[n - 1];
-            if (dx * dx + dy * dy + dz * dz < 1e-6) continue;
-          }
-          out.push(p.x, p.y, p.z);
-        }
-        const c = mk.color;
-        if (!col && c && c.a > 0) {
-          col = `rgba(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)},${c.a})`;
-        }
-      }
+      // 归一化 + 折线提取交给纯函数（src/core/expTraj.ts，可单独测）：
+      // 它覆盖 ARROW / LINE_STRIP / LINE_LIST 以及 **EGO 的 SPHERE_LIST(7)**，
+      // 并把单点 marker（SUPER 的 SPHERE 航点）排除掉。
+      // 之前这里只认前三种，EGO 的消息被整条 `continue` 掉
+      // —— 那正是「切到 EGO 后一条路径都没有」的根因。
+      const { points: out, color: col, markerCount, skipped } = parseExpTrajMarkers(msg);
+
       // 只在真的有折线时才覆盖。
       // SUPER 每次发布前会先 deleteAllMarkerArray 清场（发一个空 marker），
       // 若把空结果也 setExpTraj 进去，路径刚画出来就被下一条空消息抹掉，
@@ -551,7 +546,16 @@ export default function App() {
       if (!expTrajLoggedRef.current && out.length >= 6) {
         expTrajLoggedRef.current = true;
         pushLog(
-          `ExpTraj 收到有效轨迹：markers=${list.length} 点数=${out.length / 3} 颜色=${col ?? "—"}`,
+          `ExpTraj 收到有效轨迹：markers=${markerCount} 点数=${out.length / 3} 颜色=${col ?? "—"}`,
+        );
+      }
+      // 诊断：有 marker、但一个点都没解析出来。以前这种情况完全静默，
+      // 和「根本没发消息」分不开，能把人查很久。只提醒一次。
+      if (!expTrajWarnRef.current && out.length < 6 && markerCount > 0 && skipped === markerCount) {
+        expTrajWarnRef.current = true;
+        pushLog(
+          `ExpTraj: ${markerCount} 个 marker 全被过滤（消息类型未覆盖）—— 话题格式可能又变了，看 src/core/expTraj.ts`,
+          "warn",
         );
       }
       // 关键：这里【不能做时间节流】。
@@ -714,6 +718,7 @@ export default function App() {
             fenceMode={fenceMode}
             onFenceModeChange={setFenceMode}
             currentZ={dronePose?.z}
+            onHeightCommit={setHoldHeight}
           />
         </aside>
 
@@ -747,6 +752,8 @@ export default function App() {
                 onViewChange={setMap2d}
                 planner={planner}
                 defaultHeight={1.0}
+                holdHeight={holdHeight}
+                onHeightCommit={setHoldHeight}
                 onWaypointsChange={setWaypoints}
                 trajectory={trajectory}
                 planPath={planPath}
