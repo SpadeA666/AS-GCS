@@ -323,9 +323,17 @@ export default function App() {
     );
   }, [cloudTopics]);
 
-  /** 膨胀点云：SUPER 的 ROG Inflated */
+  /**
+   * 膨胀点云：
+   *   SUPER -> /fsm_node/rog_map/inf_occ
+   *   EGO   -> /grid_map/occupancy_inflate
+   * 两个规划器命名不一样，所以要依次匹配。
+   */
   const inflatedCloudTopic = useMemo(
-    () => cloudTopics.find((t) => t.includes("inf_occ")) ?? "",
+    () =>
+      cloudTopics.find((t) => t.includes("inf_occ")) ??
+      cloudTopics.find((t) => t.includes("occupancy_inflate")) ??
+      "",
     [cloudTopics],
   );
 
@@ -544,11 +552,14 @@ export default function App() {
         .callService("/gcs/set_planner", { planner: p })
         .then((r) => {
           const res = r as { success?: boolean; message?: string };
-          pushLog(
-            `切换规划器 → ${p.toUpperCase()}: ${res.success ? "已受理" : "拒绝"} ${res.message ?? ""}`,
-          );
+          if (res.success) {
+            pushLog(`切换规划器 → ${p.toUpperCase()}: 已受理 ${res.message ?? ""}`, "ok");
+          } else {
+            // 被拒（飞行中 / 正在切换 / 已是目标）——用红色，别让用户以为是成功
+            pushLog(`切换规划器 → ${p.toUpperCase()}: 被拒 — ${res.message ?? ""}`, "error");
+          }
         })
-        .catch((e) => pushLog(`切换规划器失败: ${String(e)}`));
+        .catch((e) => pushLog(`切换规划器失败: ${String(e)}`, "error"));
 
       if (waypoints.length > 0) {
         pushLog(`已清空 ${waypoints.length} 个航点（防止旧点被新规划器执行）`);
