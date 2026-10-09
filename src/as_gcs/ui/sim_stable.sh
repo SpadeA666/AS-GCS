@@ -77,6 +77,16 @@ run() {  # run <名字> <命令...>
 SIM_WORLD="${SIM_WORLD:-indoor3}"
 
 echo "═══ 启动仿真（场景 ${SIM_WORLD}，各节点独立会话，互不连带）═══"
+
+# 规划器状态文件必须清掉。
+# 它描述的是【运行时】状态，而仿真重启后默认跑的永远是 SUPER。
+# 不清的话：上次切到 EGO 时留下的 "ready ego" 会被 gcs_gateway 读到
+# （网关启动时会跟随这个文件，见 pollPlannerSwitch），于是出现
+# 「实际在跑 SUPER，网关却按 EGO 的控制律发指令」这种错位 ——
+# 现象就是切换规划器之后行为对不上，很难查。
+rm -f /tmp/planner_switch.state
+
+echo "  （已重置规划器状态：→ super）"
 run px4          roslaunch px4 "${SIM_WORLD}.launch"
 sleep 8
 run fasterlio    roslaunch faster_lio mapping_mid360.launch

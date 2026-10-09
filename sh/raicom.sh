@@ -25,9 +25,15 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
+# 规划器状态文件重置：仿真重启后默认跑的永远是 SUPER，
+# 而该文件描述的是【运行时】状态。上次停在 EGO 时留下的 "ready ego"
+# 会被 gcs_gateway 读到（网关启动时会跟随它），导致
+# 「实际跑 SUPER、网关却按 EGO 的控制律发指令」。
+rm -f /tmp/planner_switch.state
+
 # 3) 依次启动，每条间隔 2s
 echo "[raicom] (1/7) roslaunch px4 raicom.launch"
-roslaunch px4 raicom.launch &
+roslaunch px4 indoor3.launch &
 PIDS+=($!)
 sleep 2
 

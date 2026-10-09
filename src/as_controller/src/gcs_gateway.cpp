@@ -634,11 +634,17 @@ class GcsGateway {
   /**
    * 轮询切换脚本写的状态文件，推进 planner_pending_ 状态机并广播给前端。
    * 切换在独立进程（switch_planner.sh）里做，不阻塞主循环的 setpoint 心跳。
+   *
+   * 注意：这个函数在 50Hz 主循环里每帧都被调，所以读文件做了节流。
    */
   void pollPlannerSwitch() {
-    if (planner_pending_.empty()) {
+    // 节流（用 WallTime：仿真 /use_sim_time 下 ros::Time 可能不走）
+    const ros::WallTime now = ros::WallTime::now();
+    if (!planner_poll_last_.isZero() && (now - planner_poll_last_).toSec() < 0.5) {
       return;
     }
+    planner_poll_last_ = now;
+
     std::ifstream f(kPlannerStateFile);
     if (!f.is_open()) {
       return;
@@ -648,15 +654,44 @@ class GcsGateway {
       return;
     }
 
+    // ── ① 本进程发起的切换：推进状态机（原有逻辑）──
+    if (!planner_pending_.empty()) {
+      planner_state_seen_ = line;
+      if (line.rfind("ready", 0) == 0) {
+        planner_ = (planner_pending_ == "ego") ? Planner::EGO : Planner::SUPER;
+        ROS_WARN("[gcs_gateway] 规划器切换完成: %s", planner_pending_.c_str());
+        publishPlannerStatus("ready", planner_pending_);
+        planner_pending_.clear();
+      } else if (line.rfind("failed", 0) == 0) {
+        ROS_ERROR("[gcs_gateway] 规划器切换失败: %s", line.c_str());
+        publishPlannerStatus("failed", planner_pending_);
+        planner_pending_.clear();
+      }
+      return;
+    }
+
+    // ── ② 外部（手动跑 switch_planner.sh 等）改的状态也要跟随 ──
+    // 以前只在 planner_pending_ 非空时才读这个文件，于是手动切换后网关
+    // 完全不知道，/gcs/planner_status 一直停在旧的 latch 值。前端拿它去选
+    // 话题，就会订到已经停掉的那个规划器的话题上——表现是「切到 EGO 后
+    // 路径 / 膨胀点云全空」，极其难定位。
+    // 这里让状态文件成为单一真值来源。
+    if (line == planner_state_seen_) {
+      return;
+    }
+    planner_state_seen_ = line;
     if (line.rfind("ready", 0) == 0) {
-      planner_ = (planner_pending_ == "ego") ? Planner::EGO : Planner::SUPER;
-      ROS_WARN("[gcs_gateway] 规划器切换完成: %s", planner_pending_.c_str());
-      publishPlannerStatus("ready", planner_pending_);
-      planner_pending_.clear();
-    } else if (line.rfind("failed", 0) == 0) {
-      ROS_ERROR("[gcs_gateway] 规划器切换失败: %s", line.c_str());
-      publishPlannerStatus("failed", planner_pending_);
-      planner_pending_.clear();
+      const std::string who = line.size() > 6 ? line.substr(6) : "";
+      if ((who == "ego" && planner_ != Planner::EGO) ||
+          (who == "super" && planner_ != Planner::SUPER)) {
+        planner_ = (who == "ego") ? Planner::EGO : Planner::SUPER;
+        ROS_WARN("[gcs_gateway] 跟随外部规划器切换: 当前 = %s", who.c_str());
+        publishPlannerStatus("ready", who);
+      }
+    } else if (line.rfind("switching", 0) == 0) {
+      const std::string who = line.size() > 10 ? line.substr(10) : "";
+      ROS_WARN("[gcs_gateway] 外部正在切换规划器: -> %s", who.c_str());
+      publishPlannerStatus("switching", who);
     }
   }
 
@@ -904,6 +939,10 @@ class GcsGateway {
   static constexpr const char* kPlannerStateFile = "/tmp/planner_switch.state";
   /// 非空 = 切换进行中，值是目标规划器（ego / super）
   std::string planner_pending_;
+  /// 上一次读到的状态文件内容（内容没变就不重复广播）
+  std::string planner_state_seen_;
+  /// 读状态文件的节流时间戳
+  ros::WallTime planner_poll_last_;
   ros::Publisher planner_status_pub_;
   ros::ServiceServer srv_goto_, srv_goto_planner_, srv_planner_, srv_nav_mode_,
       srv_start_follow_, srv_stop_follow_;
