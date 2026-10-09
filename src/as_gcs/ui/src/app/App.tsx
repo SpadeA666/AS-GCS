@@ -540,7 +540,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <span className="brand">
-          <img src="/logo.svg" alt="AS" className="brand-logo" />
+          <img src="/logo.png" alt="AS" className="brand-logo" />
           <span className="title">AS 地面站</span>
         </span>
         <input
