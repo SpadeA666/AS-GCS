@@ -36,6 +36,9 @@ bash scripts/install_all.sh
 # 3. 起仿真 + 地面站
 bash src/as_gcs/ui/restart_all.sh raicom
 # 浏览器打开 http://localhost:5173/
+
+# 4.（可选）装桌面／应用菜单快捷方式，以后双击图标就能启动
+bash src/as_gcs/ui/install-desktop-icon.sh
 ```
 
 ## 环境要求（摘要）

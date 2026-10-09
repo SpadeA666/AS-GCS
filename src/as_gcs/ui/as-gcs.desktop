@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=AS 地面站
+Name[en]=AS Ground Station
+Comment=AS 无人机地面站（Web UI + 控制面）
+Comment[en]=AS UAV Ground Station (Web UI + control plane)
+# 下面两行由 install-desktop-icon.sh 按实际安装路径改写，不要手动填死路径
+Exec=__UI_DIR__/launch-gcs.sh
+Icon=__UI_DIR__/icon.png
+Terminal=false
+Categories=Development;Science;Robotics;
+Keywords=UAV;Drone;ROS;GroundStation;PX4;
+StartupNotify=true

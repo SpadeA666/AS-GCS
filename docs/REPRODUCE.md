@@ -230,6 +230,31 @@ bash ~/catkin_ws/src/as_gcs/ui/start-dev.sh
 bash ~/catkin_ws/src/as_gcs/ui/cleanup_all.sh
 ```
 
+### 6.4 桌面／应用菜单快捷方式（可选）
+
+装一次，以后双击图标就能启动地面站（**不会启动仿真**，仿真要另外起）：
+
+```bash
+bash ~/catkin_ws/src/as_gcs/ui/install-desktop-icon.sh
+```
+
+脚本会：
+
+1. 读同目录的 `as-gcs.desktop` 模板，把里面的 `__UI_DIR__` 换成**当前实际路径**
+   （所以 clone 到任何目录都能用）
+2. 写到 `~/.local/share/applications/`（应用菜单）和桌面目录
+3. 刷新应用菜单数据库
+
+其它用法：
+
+```bash
+bash install-desktop-icon.sh --app-only   # 只装应用菜单，不动桌面
+bash install-desktop-icon.sh --remove     # 卸载
+```
+
+> **桌面图标没马上出现？** GNOME 的图标缓存比较粘，注销重登一次就好。
+> 快捷方式的实际入口是 `launch-gcs.sh`（= `start-dev.sh` + 开浏览器）。
+
 ---
 
 ## 七、地面站怎么用

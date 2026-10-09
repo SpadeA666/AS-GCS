@@ -11,7 +11,7 @@
 #
 # 浏览器入口统一为 http://localhost:5173/
 
-UI_DIR=/home/spadea/catkin_ws/src/as_gcs/ui
+UI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WEB_PORT=5173
 
 notify() {

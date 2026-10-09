@@ -42,7 +42,9 @@ bash ui/restart_all.sh raicom       # 换回竞赛小场景
 | `start-dev.sh` | 只起/自愈地面站（bridge + gateway + 前端 + watchdog） |
 | `cleanup_all.sh` | 停掉仿真与地面站组件（保留前端和 watchdog） |
 | `gcs_watchdog.sh` | 常驻守护，master 换代后自动救回 bridge/gateway |
-| `launch-gcs.sh` | 桌面快捷方式调用（= `start-dev.sh` + 开浏览器） |
+| `launch-gcs.sh` | 桌面快捷方式的实际入口（= `start-dev.sh` + 开浏览器） |
+| `install-desktop-icon.sh` | 把快捷方式装到桌面/应用菜单（自动按本机路径改写模板） |
+| `as-gcs.desktop` | 快捷方式模板，`__UI_DIR__` 占位由上面脚本替换 |
 
 **排障探针**（`ui/scripts/`）：
 
@@ -61,6 +63,9 @@ npx vite-node scripts/probe_exptraj_throttled.ts 0  # 带节流验证 ExpTraj
 ```
 
 **桌面快捷方式**（`~/桌面/as-gcs.desktop`）**不启动仿真**，只拉起地面站并打开浏览器。
+
+自己装一份：`bash ~/catkin_ws/src/as_gcs/ui/install-desktop-icon.sh`
+（别人 clone 后没有这个 .desktop，需要跑一次安装脚本）。
 
 ## 为什么不用 `raicom.sh` 启动仿真
 
