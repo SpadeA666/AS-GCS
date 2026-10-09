@@ -20,6 +20,7 @@ find_package(catkin REQUIRED COMPONENTS
   yolov8_ros_msgs
   yolov11_ros_msgs
   ar_track_alvar_msgs
+  as_gcs
 )
 
 find_package(Boost REQUIRED COMPONENTS system)
@@ -48,7 +49,7 @@ add_definitions(${EIGEN_DEFINITIONS})
 catkin_package(
  INCLUDE_DIRS include
 #  LIBRARIES vision_to_mavros
-  CATKIN_DEPENDS roscpp message_runtime yolov8_ros_msgs yolov11_ros_msgs quadrotor_msgs geometry_msgs mavros_msgs tf
+  CATKIN_DEPENDS roscpp message_runtime yolov8_ros_msgs yolov11_ros_msgs quadrotor_msgs geometry_msgs mavros_msgs tf as_gcs
 #  DEPENDS system_lib
 )
 
@@ -70,9 +71,12 @@ include_directories(
 #   ${CMAKE_CURRENT_SOURCE_DIR}/lib
 # )
 # add_executable(navigation_with_waypoint_node src/navigation_with_waypoint.cpp)
-add_library(asnav_api_2d src/api_2d.cpp)
+# 2026-10-09: asnav_api_2d / waypoints_put_node / asnav_2d_node 停用。
+# 2D 路径与投放节点是其他竞赛版本遗留，本项目只用 3D 路径。
+# 对应源文件已不入库，保留此处注释以免误认为可用。
+# add_library(asnav_api_2d src/api_2d.cpp)
 add_library(asnav_api_3d src/api_3d.cpp)
-target_link_libraries(asnav_api_2d ${catkin_LIBRARIES})
+# target_link_libraries(asnav_api_2d ${catkin_LIBRARIES})
 target_link_libraries(asnav_api_3d ${catkin_LIBRARIES})
 ## Specify libraries to link a library or executable target against
 # target_link_libraries(navigation_with_waypoint_node
@@ -84,19 +88,28 @@ target_link_libraries(asnav_api_3d ${catkin_LIBRARIES})
 # compile the detectnet program#
 # cuda_add_executable(navigation_with_waypoint_node src/flight_control.cpp src/navigation_with_waypoint.cpp )
 # cuda_add_executable(feisi_node src/flight_control.cpp src/feisi.cpp )
-cuda_add_executable(waypoints_put_node src/flight_control.cpp src/waypoints_put1.cpp )
-add_executable(asnav_2d_node src/competition_2d.cpp)
+# cuda_add_executable(waypoints_put_node src/flight_control.cpp src/waypoints_put1.cpp )
+# add_executable(asnav_2d_node src/competition_2d.cpp)
 add_executable(asnav_3d_node src/competition_3d.cpp)
 # link detectnet to jetson-inference library
 # target_link_libraries(navigation_with_waypoint_node jetson-inference ${catkin_LIBRARIES} ${OpenCV_LIBS})
 # target_link_libraries(feisi_node jetson-inference ${catkin_LIBRARIES} ${OpenCV_LIBS})
-target_link_libraries(waypoints_put_node nvvpi  ${catkin_LIBRARIES} ${OpenCV_LIBS})
-target_link_libraries(asnav_2d_node
+# target_link_libraries(waypoints_put_node nvvpi  ${catkin_LIBRARIES} ${OpenCV_LIBS})
+# target_link_libraries(asnav_2d_node
+#   ${catkin_LIBRARIES}
+#   ${Boost_LIBRARIES}
+#   asnav_api_2d
+# )
+target_link_libraries(asnav_3d_node
   ${catkin_LIBRARIES}
   ${Boost_LIBRARIES}
-  asnav_api_2d
+  asnav_api_3d
 )
-target_link_libraries(asnav_3d_node
+
+# 2026-10-08: 地面站网关节点。取代 asnav_3d_node（两者不可同时运行）。
+# 复用 asnav_api_3d 这个库，所以必须放在本包内。
+add_executable(gcs_gateway_node src/gcs_gateway.cpp)
+target_link_libraries(gcs_gateway_node
   ${catkin_LIBRARIES}
   ${Boost_LIBRARIES}
   asnav_api_3d
