@@ -27,7 +27,17 @@ src/*
 !src/spadea/
 !src/SUPER/
 !src/as_gcs/
-cmake/protobuf-config.cmake
+
+# 编译必需的 protobuf 桩文件（之前被误忽略，导致别人编译失败）
+!cmake/protobuf-config.cmake
+
+# as_controller 下的历史副本/变体，不入库
+*（复件）*
+*(复件)*
+*ar无偏移*
+*_bak
+*.bak
+*（副本）*
 
 # 地面站前端的依赖与构建产物（node_modules 156MB，不入库）
 src/as_gcs/ui/node_modules/
