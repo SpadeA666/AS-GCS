@@ -405,20 +405,35 @@ export default function App() {
     );
   }, [conn, pathTopic]);
 
+  /**
+   * ExpTraj 的话题名用 useMemo 提出来，作为 effect 的稳定依赖。
+   *
+   * 为什么不能直接依赖 `topics`：onChannels 在 advertise 和 unadvertise 时都会
+   * 触发，而且每次传的都是新数组。只要话题列表有任何变动，effect 就会
+   * cleanup（退订）→ 重新订阅；而 SUPER 只在 replan 那一瞬间发一条 exp_traj，
+   * 落在重订阅的窗口里就永远丢了 —— 表现就是“从来没显示过”。
+   */
+  const expTrajTopic = useMemo(
+    () => topics.find((x) => x.topic.includes("visualization/exp_traj"))?.topic ?? "",
+    [topics],
+  );
+
+  /** 诊断用：实际收到的 ExpTraj 消息数与见过的最大折线段数 */
+  const [expTrajStat, setExpTrajStat] = useState({ msgs: 0, segs: 0 });
+  /** 只在第一次收到时打一条日志，避免刷屏 */
+  const expTrajLoggedRef = useRef(false);
+
   // ── 订阅 SUPER 的期望轨迹（rviz 里的 ExpTraj）──
   // 它是 MarkerArray，不能按 nav_msgs/Path 解析，得从 markers[].points 里取折线。
   // 顺带把 marker 自带的颜色拿过来，与 rviz 显示保持一致。
   // 另：SUPER 是“有订阅者才发”（ros1_interface.hpp 里查 getNumSubscribers），
   // 所以前端一订阅它就会开始填充，rviz 那边同时开着也互不影响。
   useEffect(() => {
-    if (!conn) return;
-    const t = topics.find((x) => x.topic.includes("visualization/exp_traj"));
-    if (!t) return;
-    let lastPush = 0;
-    return conn.subscribe(t.topic, (msg) => {
-      const now = performance.now();
-      if (now - lastPush < 200) return; // 与 path 同样节流
-      lastPush = now;
+    if (!conn || !expTrajTopic) return;
+    // 订阅建立时打一条，用于区分“没订阅上”和“订阅了但没数据”
+    pushLog(`已订阅 ExpTraj: ${expTrajTopic}`);
+    expTrajLoggedRef.current = false;
+    return conn.subscribe(expTrajTopic, (msg) => {
       const m = msg as {
         markers?: {
           type?: number;
@@ -459,8 +474,26 @@ export default function App() {
         setExpTraj(out);
         if (col) setExpTrajColor(col);
       }
-    }, 200);   // ExpTraj 76Hz 且一次 36 个 marker，节流放解码层
-  }, [conn, topics]);
+      setExpTrajStat((p) => ({ msgs: p.msgs + 1, segs: Math.max(p.segs, out.length / 3) }));
+      // 只在【真的收到有效轨迹】时记一次。
+      // 之前写成“首次收到”，而 SUPER 每次都先发空 marker 清场，
+      // 于是这条日志永远记的是那条空消息（markers=1 可用点=0），毫无信息量。
+      if (!expTrajLoggedRef.current && out.length >= 6) {
+        expTrajLoggedRef.current = true;
+        pushLog(
+          `ExpTraj 收到有效轨迹：markers=${m.markers.length} 点数=${out.length / 3} 颜色=${col ?? "—"}`,
+        );
+      }
+      // 关键：这里【不能做时间节流】。
+      // SUPER 每次发布是连发两条：先 deleteAllMarkerArray 发空 marker 清场，
+      // 紧接着发填好的轨迹，**两条间隔不到 1ms**。任何时间节流（哪怕是 15ms）
+      // 都会把第二条（真正有数据的那条）丢掉 —— 实测 15ms 节流下收到 93 条
+      // 消息、有效 0 条。
+      //
+      // 改用数据层过滤：空结果不 setState，于是渲染频率自然降到“每次有效
+      // replan 一次”（实测约 11 次/秒），压力比之前还小。
+    }, 0);
+  }, [conn, expTrajTopic, pushLog]);
 
   const serviceSet = useMemo(() => new Set(services), [services]);
 
@@ -506,7 +539,10 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <span className="title">AS 地面站</span>
+        <span className="brand">
+          <img src="/logo.svg" alt="AS" className="brand-logo" />
+          <span className="title">AS 地面站</span>
+        </span>
         <input
           className="url"
           value={url}
@@ -590,6 +626,7 @@ export default function App() {
                 planPath={planPath}
                 expTraj={expTraj}
                 expTrajColor={expTrajColor}
+                expTrajStat={expTrajStat}
                 geofence={geofence}
                 onGeofenceChange={setGeofence}
                 onApplyGeofence={applyGeofence}
@@ -632,9 +669,17 @@ export default function App() {
                 const on = subscribed.has(t.topic);
                 return (
                   <li key={t.topic} className={on ? "on" : ""}>
-                    <button className="topic-btn" onClick={() => toggle(t.topic)}>
-                      <span className="tname">{t.topic}</span>
-                      <span className="ttype">{t.schemaName}</span>
+                    <button
+                      className="topic-btn"
+                      onClick={() => toggle(t.topic)}
+                      title={`${t.topic}\n${t.schemaName}${st ? `\n${st.hz.toFixed(1)} Hz  解码 ${st.decodeMs.toFixed(2)} ms` : ""}`}
+                    >
+                      <span className="tname" title={t.topic}>
+                        {t.topic}
+                      </span>
+                      <span className="ttype" title={t.schemaName}>
+                        {t.schemaName}
+                      </span>
                       <span className="thz">{st ? `${st.hz.toFixed(1)}` : ""}</span>
                     </button>
                   </li>

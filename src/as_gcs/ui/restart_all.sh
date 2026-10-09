@@ -8,18 +8,41 @@
 #   注册表却已经没了 —— 前端于是"连上了却拿不到 /gcs/ 服务"。
 #   所以永远是：先仿真 → 等 master 就位 → 再地面站。
 #
-# 用法：bash restart_all.sh
+# 用法：
+#   bash restart_all.sh                # 默认 indoor3
+#   bash restart_all.sh raicom         # 重启并换到 raicom 场景
+#   bash restart_all.sh --list         # 列出可用场景
+#
 # 只重启地面站（仿真不动）：bash start-dev.sh
+# 只重启仿真：              bash sim_stable.sh <场景>
+# 只停：                    bash cleanup_all.sh
 
 set -u
 UI_DIR=/home/spadea/catkin_ws/src/as_gcs/ui
+
+# 场景参数：直接透传给 sim_stable.sh（它自己会校验并列出可用项）
+case "${1:-}" in
+  --list|-l)
+    exec bash "$UI_DIR/sim_stable.sh" --list
+    ;;
+  -h|--help)
+    echo "用法：bash restart_all.sh [场景]"
+    echo "      bash restart_all.sh --list"
+    exit 0
+    ;;
+esac
+
+if [ -n "${1:-}" ]; then
+  SCENE="$1"
+  echo "════════ 场景：$SCENE ════════"
+fi
 
 echo "════════ 1/4 停止旧仿真与地面站组件 ════════"
 bash "$UI_DIR/cleanup_all.sh"
 
 echo
 echo "════════ 2/4 启动仿真（各节点独立会话）════════"
-bash "$UI_DIR/sim_stable.sh"
+bash "$UI_DIR/sim_stable.sh" ${SCENE:+"$SCENE"}
 
 echo
 echo "════════ 3/4 等 ROS master 与话题就位 ════════"

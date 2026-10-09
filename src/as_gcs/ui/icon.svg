@@ -1,40 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="AS">
   <defs>
-    <!-- 背景：左上到右下的深色渐变，比纯色更有体积感 -->
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#1d242e"/>
-      <stop offset="100%" stop-color="#0c0f14"/>
+    <!-- 底色：与地面站 UI 的 panel / bg 同源 -->
+    <linearGradient id="asBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#20262e"/>
+      <stop offset="1" stop-color="#14171c"/>
     </linearGradient>
-
-    <!-- 字母：青蓝渐变，模拟屏幕/数据的光感 -->
-    <linearGradient id="fg" x1="0.1" y1="0" x2="0.9" y2="1">
-      <stop offset="0%" stop-color="#8ad6ff"/>
-      <stop offset="55%" stop-color="#4ea1ff"/>
-      <stop offset="100%" stop-color="#2a6fd6"/>
+    <!-- 笔画：accent 蓝，左上略亮 -->
+    <linearGradient id="asFg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6fbaff"/>
+      <stop offset="1" stop-color="#3f8ff0"/>
     </linearGradient>
-
-    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="3.6" result="b"/>
-      <feMerge>
-        <feMergeNode in="b"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
   </defs>
 
-  <rect width="128" height="128" rx="27" fill="url(#bg)"/>
-  <rect x="7" y="7" width="114" height="114" rx="21"
-        fill="none" stroke="#303a45" stroke-width="1.4"/>
+  <rect width="128" height="128" rx="30" fill="url(#asBg)"/>
+  <rect x="1.5" y="1.5" width="125" height="125" rx="28.5"
+        fill="none" stroke="#ffffff" stroke-opacity="0.07" stroke-width="3"/>
 
-  <!-- A：三角 + 横杠 -->
-  <g filter="url(#glow)" fill="none" stroke="url(#fg)"
-     stroke-width="9.5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M24 92 L41 38 L58 92"/>
-    <path d="M31 72 L51 72"/>
-    <!-- S：两段反向弧，收笔略内钩 -->
-    <path d="M101 53 C101 44 91 39 83 43 C74 47 75 56 85 61 C95 66 97 73 89 80 C81 87 70 82 69 73"/>
+  <g stroke="url(#asFg)" stroke-width="10.8" stroke-linecap="round"
+     stroke-linejoin="round" fill="none">
+    <!-- A -->
+    <path d="M22 98 L42 30 L62 98"/>
+    <path d="M29.8 77.2 L54.2 77.2"/>
+    <!-- S -->
+    <path d="M106 43
+             C106 34 99 27 89.5 27
+             C80 27 73 34 73 43
+             C73 53 80 59 89.5 63
+             C99 67 106 73 106 83
+             C106 92 99 99 89 99
+             C80 99 73 92 73 83"/>
   </g>
-
-  <!-- 点睛：右下角一个橙色小点，呼应航点 -->
-  <circle cx="104" cy="99" r="4.5" fill="#e0a030"/>
 </svg>

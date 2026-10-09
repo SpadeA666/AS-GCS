@@ -53,6 +53,8 @@ interface Props {
   /** SUPER 期望轨迹（rviz 的 ExpTraj），扁平 xyz */
   expTraj?: number[];
   expTrajColor?: string;
+  /** 诊断用：ExpTraj 实际收到的消息数与最大段数 */
+  expTrajStat?: { msgs: number; segs: number };
   /** 安全区（2D 编辑 + 绘制） */
   geofence?: Geofence;
   onGeofenceChange?: (g: Geofence) => void;
@@ -112,6 +114,7 @@ export function Map2DPanel({
   planPath,
   expTraj,
   expTrajColor = "#ff50c8",
+  expTrajStat,
   geofence,
   onGeofenceChange,
   onApplyGeofence,
@@ -892,6 +895,14 @@ export function Map2DPanel({
         >
           清除航线
         </button>
+        {expTrajStat && (
+          <span
+            className="muted mono"
+            title="ExpTraj 只在规划器 replan 时才发；这里显示收到的消息数与最大折线段数。一直为 0 说明订阅没成功、或规划器没在规划。"
+          >
+            ExpTraj {expTrajStat.msgs} 条 / {expTrajStat.segs.toFixed(0)} 段
+          </span>
+        )}
       </div>
 
       <div className="view3d-host" ref={hostRef}>

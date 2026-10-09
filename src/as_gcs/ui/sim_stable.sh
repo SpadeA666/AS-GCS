@@ -1,19 +1,47 @@
 #!/bin/bash
 # 稳定启动本地仿真：启动内容与 sh/raicom.sh 一致，但去掉了会让整个仿真级联崩掉的设计。
 #
-# 为什么需要它：
-#   raicom.sh 开头是 `set -e`，结尾是裸的 `wait`，且 `trap cleanup INT TERM EXIT`。
+# 用法：
+#   bash sim_stable.sh                # 默认 indoor3
+#   bash sim_stable.sh raicom         # 指定场景
+#   bash sim_stable.sh --list         # 列出可用场景
+#
+# 为什么不用 raicom.sh：
+#   它开头是 `set -e`，结尾是裸的 `wait`，且 `trap cleanup INT TERM EXIT`。
 #   `wait` 一旦返回某个子进程的退出码（任一 launch 抖动、退出、被杀），
-#   `set -e` 就会立刻结束脚本，而 EXIT trap 随即把**所有** ROS 节点一起杀掉。
+#   `set -e` 就会立刻结束脚本，而 EXIT trap 随即把【所有】 ROS 节点一起杀掉。
 #   结果：任何一条 launch 出问题，整个仿真（Gazebo/PX4/LIO/规划器）全部消失，
-#   连带 foxglove_bridge / gcs_gateway 变成孤儿，地面站就"连不上"。
+#   连带 foxglove_bridge / gcs_gateway 变成孤儿，地面站就“连不上”。
 #
 #   本脚本让每条 launch 各自 setsid nohup 独立成会话，父脚本拉完就退出：
-#   谁挂掉都不影响别人，也没有人会来"统一清理"。
-#
-# 用法：  bash sim_stable.sh
-# 日志：  /tmp/sim_<名字>.log
-# 停止：  bash cleanup_all.sh（或按需单独 pkill）
+#   谁挂掉都不影响别人，也没有人会来“统一清理”。
+
+# ── 场景参数：支持位置参数，也兼容 SIM_WORLD=xxx 环境变量 ──
+WORLDS="indoor1 indoor2 indoor3 indoor4 indoor5 outdoor1 outdoor2 outdoor3 outdoor4 outdoor2_precision_landing raicom rk zhihang1 zhihang2"
+
+case "$1" in
+  --list|-l)
+    echo "可用场景（来自 PX4_Firmware/launch/*.launch，已校验 world 文件存在）："
+    for w in $WORLDS; do echo "  $w"; done
+    echo
+    echo "用法：bash sim_stable.sh <场景>"
+    exit 0
+    ;;
+  -h|--help)
+    echo "用法：bash sim_stable.sh [场景]      # 默认 indoor3"
+    echo "      bash sim_stable.sh --list      # 列出可用场景"
+    exit 0
+    ;;
+  "") ;;
+  *)
+    if ! echo " $WORLDS " | grep -q " $1 "; then
+      echo "未知场景：$1"
+      echo "可用：$WORLDS"
+      exit 1
+    fi
+    export SIM_WORLD="$1"
+    ;;
+esac
 
 export DISPLAY="${DISPLAY:-:0}"
 
