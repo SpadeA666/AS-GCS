@@ -63,3 +63,24 @@ bash src/as_gcs/ui/restart_all.sh raicom
 
 - **不要让 agent 主动触发起飞** —— 地面站的起飞按钮会真的解锁，`takeoff()` 在 `main()` 里就执行
 - 重启网关前确认 `armed: False` —— 它是 OFFBOARD 的 setpoint 源，飞着时重启会触发 PX4 failsafe
+
+## 致谢
+
+本项目建在大量优秀开源工作之上：
+
+- **XTDrone** — 基于 PX4 / ROS / Gazebo 的无人机仿真平台，本项目仿真的基座
+- **PX4-Autopilot** / **Gazebo** / **ROS Noetic** — 飞控、仿真与机器人中间件
+- **faster_lio** — 激光里程计（中文适配版来自微分智飞 / 非凸空间，基于高翔的 Faster-LIO），以及 **Livox-SDK2 / livox_ros_driver2**
+- **SUPER** — 安全高速导航（Science Robotics 2025）
+- **EGO-Planner** — 浙大 FAST-Lab
+- **MAVROS** / **foxglove_bridge (Foxglove)** — 通信与可视化
+- **YOLO / Ultralytics** / **VINS-Fusion** / **ar_track_alvar** — 感知
+- **Eigen** / **Ceres Solver** / **PCL** / **OpenCV** / **Boost** — 基础库
+
+特别感谢：
+
+- **香港大学 MARS 实验室**（Fu Zhang 团队）—— FAST-LIO 系列与 SUPER 都出自该团队，
+  本项目在定位与规划上直接受益于他们的工作
+- **浙江大学 FAST-Lab** —— EGO-Planner 的开发者，本项目保留它作为备选规划器
+
+详细的出处与引用见 [docs/REPRODUCE.md](docs/REPRODUCE.md) 文末。

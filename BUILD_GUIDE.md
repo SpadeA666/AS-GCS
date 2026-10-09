@@ -1,9 +1,11 @@
 # catkin_ws 编译指南与常见问题解决方案
 
-> 最后更新: 2026-08-01
-> 工作空间: 55 个包全部编译成功
+> 最后更新: 2026-10-09
 > 构建工具: catkin_tools (`catkin build`)
 > ROS 版本: Noetic (Ubuntu 20.04)
+> 仓库只含 as_controller 与 as_gcs 两个核心包，
+> 其余依赖（mavros、faster_lio、foxglove_bridge、SUPER 等）需自行准备，
+> 见 docs/REPRODUCE.md。
 
 ---
 
@@ -216,11 +218,8 @@ catkin config --cmake-args -DCeres_DIR=/usr/lib/cmake/Ceres
 |------|------|
 | `cmake/protobuf-config.cmake` | Anaconda protobuf 拦截桩文件 |
 | `scripts/build.sh` | 便捷编译脚本(自动传递 cmake 参数) |
+| `scripts/install_all.sh` | 一键安装与环境自检（`--check-only` 只检查不改动） |
 | `.catkin_tools/profiles/default/config.yaml` | catkin build 配置文件 |
-| `src/SUPER/super_planner/` | SUPER 核心规划器包 |
-| `src/SUPER/rog_map/` | SUPER ROG 地图模块 |
-| `src/SUPER/mission_planner/` | SUPER 任务规划器 |
-| `src/SUPER/mars_uav_sim/mars_quadrotor_msgs/CATKIN_IGNORE` | 跳过重复的消息包编译 |
 
 ---
 

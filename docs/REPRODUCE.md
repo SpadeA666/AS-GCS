@@ -16,6 +16,16 @@
 
 规划器用 **SUPER**（主）和 **EGO-Planner**（备选）；定位用 **faster_lio**（包名，目录 `faster-lio`）；雷达 **Livox Mid360**。
 
+### 仿真环境基于 XTDrone
+
+仿真不是从零搭的，而是基于 **XTDrone**（一个基于 PX4 / ROS / Gazebo 的无人机通用仿真平台）。
+
+- 机型的生成用的是 XTDrone 的 `single_vehicle_spawn_xtd.launch`
+- `raicom.launch` 通过 `$(find px4)` 调用它来生成 iris 机型
+- 仿真场景、传感器（Mid360 / D435i / 下视相机）是在 XTDrone 基础上定制的
+
+所以复现仿真时，**XTDrone 是必要前置**（见第三节）。它的出处见文末致谢。
+
 本仓库（AS-GCS）**只包含这两个核心包**。其余第三方依赖需要你自行准备，见第三节。
 
 ---
@@ -91,14 +101,24 @@ pip3 install empy==3.3.4 catkin_pkg rosdep rosdistro
 
 | 包 | 用途 | 来源 |
 |---|---|---|
+| `XTDrone` | **仿真平台基座**（机型生成、场景搭建） | github.com/robin-shaun/XTDrone |
 | `Livox-SDK2` | Mid360 驱动所需的 SDK | github.com/Livox-SDK/Livox-SDK2 |
 | `livox_ros_driver2` | Mid360 的 ROS 驱动 | github.com/Livox-SDK/livox_ros_driver2 |
-| `faster-lio` | 激光雷达惯性里程计（定位）。**包名是 `faster_lio`**，启动方式 `roslaunch faster_lio mapping_mid360.launch` | github.com/gaoxiang12/faster-lio |
+| `faster-lio` | 激光雷达惯性里程计（定位） | 见下方说明 |
 | `foxglove_bridge` | 地面站的 WebSocket 桥 | github.com/foxglove/ros-foxglove-bridge |
-| `SUPER` | 主规划器（本仓库做了定制） | 见下方说明 |
+| `SUPER` | 主规划器 | 见下方说明 |
 | `ego_planner` | 备选规划器 | github.com/ZJU-FAST-Lab/ego-planner |
 | `yolov8_ros` / `yolov11_ros_msgs` | 视觉检测 | 见下方说明 |
 | `lio_to_mavros_main` | LIO 位姿 → MAVROS 桥接 | 本项目配套 |
+
+> **XTDrone 是本项目仿真的基座**：机型的生成用的是它的
+> `single_vehicle_spawn_xtd.launch`，仿真场景与传感器配置都建在它之上。
+> 不装 XTDrone 的话，仿真起不来。
+>
+> **faster-lio**：本机用的是**中文适配版**（微分智飞 / 非凸空间），
+> 基于高翔的 [Faster-LIO](https://github.com/gaoxiang12/faster-lio)，
+> 额外加了重力对齐（倾斜姿态启动时避免点云地图倾斜）并集成了 Livox 驱动。
+> 建议直接用这个适配版，上游原版不保证兼容。
 
 > **SUPER / yolov8_ros / lio_to_mavros_main 是定制过的**，直接用上游版本不保证兼容。
 > 复现时建议向项目作者索取这三者的完整副本。
@@ -415,6 +435,68 @@ bash ~/catkin_ws/scripts/install_all.sh --check-only
 
 ### 10.3 相关文档
 
-- `BUILD_GUIDE.md` —— 编译报错的完整排查（9 个已知问题）
+- `BUILD_GUIDE.md` —— 编译报错的完整排查（已知问题 1-5）
 - `src/as_gcs/README.md` —— 地面站的使用、场景切换、排障手册
 - `src/as_gcs/SKILL.md`（或在 agent 的 skills 目录下）—— 地面站的深度排查手册
+
+---
+
+## 十一、致谢
+
+本项目能跑起来，靠的是下面这些开源工作。按用途分组，包含出处。
+
+### 仿真平台（基座）
+
+- **XTDrone** —— 基于 PX4、ROS 与 Gazebo 的无人机通用仿真平台。
+  出处：K. Xiao, S. Tan, G. Wang, X. An, X. Wang and X. Wang,
+  *“XTDrone: A Customizable Multi-rotor UAVs Simulation Platform,”*
+  ICRAS 2020, pp. 55-61. doi: 10.1109/ICRAS49812.2020.9134922
+  （arXiv:2003.09700）
+
+  **本项目的仿真直接建在它之上**：机型生成用它。
+
+- **PX4-Autopilot** —— 飞控固件与 SITL 仿真
+- **Gazebo** —— 物理仿真引擎
+- **ROS Noetic** —— 机器人中间件
+
+### 定位
+
+- **FAST-LIO 系列** —— 港大 MARS 实验室（Fu Zhang 团队）
+- **faster_lio** —— 本项目实际使用的定位包。中文适配版来自
+  **微分智飞 / 非凸空间**，基于**高翔**的
+  [Faster-LIO](https://github.com/gaoxiang12/faster-lio)，
+  额外增加了**重力对齐**（倾斜姿态启动时避免点云地图倾斜）。
+- **Livox-SDK2 / livox_ros_driver2** —— Livox 官方雷达驱动
+
+### 规划
+
+- **SUPER** —— 安全高速导航。
+  出处：Y. Ren, F. Zhu, G. Lu, Y. Cai, L. Yin, F. Kong, J. Lin, N. Chen, F. Zhang,
+  *“Safety-assured High-speed Navigation for MAVs,”* Science Robotics 2025。
+  **Fu Zhang 为作者之一（港大 MARS）**。
+- **EGO-Planner** —— 浙大 FAST-Lab
+
+### 通信与可视化
+
+- **MAVROS** —— PX4 与 ROS 的桥接
+- **foxglove_bridge** / **Foxglove** —— WebSocket 可视化协议与桥
+- **rviz** —— ROS 三维可视化
+
+### 感知
+
+- **YOLO / Ultralytics** —— 目标检测
+- **VINS-Fusion** —— 视觉惯性里程计
+- **ar_track_alvar** —— AR 标签检测
+
+### 基础库
+
+- **Eigen**、**Ceres Solver**、**PCL**、**OpenCV**、**Boost**、**protobuf**
+
+### 特别致谢
+
+- **香港大学 MARS 实验室**（Fu Zhang 团队）——
+  FAST-LIO 系列与 SUPER **都出自该团队**。本项目的定位与规划两块
+  直接建在他们的工作上。
+- **浙江大学 FAST-Lab** —— EGO-Planner 的开发者。本项目保留它作为备选规划器。
+
+如有遗漏或归属错误，欢迎提 issue 指正。
