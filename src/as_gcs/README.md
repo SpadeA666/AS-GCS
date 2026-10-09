@@ -89,3 +89,76 @@ npx vite-node scripts/probe_exptraj_throttled.ts 0  # 带节流验证 ExpTraj
 - **`src/SUPER` 的 240MB 素材未入库**（模型/点云/动图），换机器后需要自行补齐。
 - 前端用 `vite dev`（:5173，HMR）。**不再维护 4173 生产预览**——那套服务的是
   `dist/` 构建产物，改了源码不重新 build 页面就是旧的，极易误判成"改动没生效"。
+
+## 遥控器接管（joy_rc_bridge）
+
+**为什么需要它**：QGC 自带的 joystick 只发 MAVLINK `MANUAL_CONTROL`，走
+`manual_control_input → manual_control_setpoint` 这条链路，**永远不会产生
+`input_rc` / `rc_channels` / `manual_control_switches`**。结果就是
+`RC_MAP_KILL_SW`、`RC_MAP_ARM_SW`、`RC_MAP_FLTMODE` 这些开关在仿真里全是死的
+（QGC v4.2 二进制里也没有任何 RC override 代码，且不支持 passthrough）。
+
+`scripts/joy_rc_bridge.py` 改发 `RC_CHANNELS_OVERRIDE`：
+
+```
+TX12 ──USB──> /dev/input/js0 ──> joy_rc_bridge ──> RC_CHANNELS_OVERRIDE
+  ──> PX4 input_rc ──> rc_update ──> rc_channels + manual_control_switches
+  ──> ManualControl ──> action_request ──> Commander
+```
+
+这条链路与真机的物理接收机**完全同构**，所以开关行为、参数都能原样搬到真机。
+
+### 用法
+
+```bash
+bash scripts/joy_bridge_ctl.sh start    # 起桥（后台常驻）
+bash scripts/joy_bridge_ctl.sh status
+bash scripts/joy_bridge_ctl.sh log
+bash scripts/joy_bridge_ctl.sh stop
+```
+
+**跑桥时必须先在 QGC 里关掉 joystick**（Vehicle Setup → Joystick → 取消 Enable），
+否则 QGC 的 `MANUAL_CONTROL` 和桥的 RC 通道会同时被接受（`COM_RC_IN_MODE=2`），
+摇杆互相打架。
+
+### 通道映射（对齐实机习惯）
+
+| TX12 | js 编号 | RC 通道 | PX4 参数 |
+|---|---|---|---|
+| 四摇杆 | Axis 0/1/2/3 | ch1/2/3/4 | `RC_MAP_ROLL/PITCH/THROTTLE/YAW` |
+| 开关 **C** | Axis 6 | ch7 | `RC_MAP_FLTMODE` |
+| 开关 **F** | Axis 7 | ch8（桥内反向） | `RC_MAP_OFFB_SW` |
+| 开关 **E** | Button 0 | ch9 | `RC_MAP_KILL_SW` |
+| 开关 **B** | Button 1 | ch10 | `RC_MAP_ARM_SW` |
+
+### 配套 PX4 参数
+
+```
+RC_MAP_ROLL=1  RC_MAP_PITCH=2  RC_MAP_THROTTLE=3  RC_MAP_YAW=4
+RC_MAP_FLTMODE=7   RC_MAP_OFFB_SW=8
+RC_MAP_KILL_SW=9   RC_MAP_ARM_SW=10
+COM_FLTMODE1=8     # 自稳 Stabilized（C 低档 -> slot 1）
+COM_FLTMODE4=1     # 高度 Altitude  （C 中档 -> slot 4）
+COM_FLTMODE6=2     # 定点 Position  （C 高档 -> slot 6）
+COM_RC_IN_MODE=2   # 否则 selector 只认 MAVLink 源，会丢掉这些通道
+COM_RC_OVERRIDE=3  # AUTO + OFFBOARD 都允许拨杆接管
+```
+
+> **注意**：PX4 SITL 里 `RC_MAP_*` 默认全是 `0`（映射**禁用**）。不显式设置的话，
+> 即使 RC 通道数据进来了也不会被当成摇杆或开关。
+
+### 已验证（仿真实测）
+
+- **C 开关**：三档 → 模式 `STABILIZED / ALTCTL / POSCTL` 完整循环，重复两轮无误
+- **E 开关**：拨到 kill → `system_status` 跃到 `8`（`MAV_STATE_FLIGHT_TERMINATION`，
+  即 `manual_lockdown`）；拨回 → 回到 `3`
+- **B 开关**：`armed False → True → False` 双向验证
+- **F 开关**（offboard）待验：OFFBOARD 需要持续 setpoint 流，
+  要等 SUPER / `as_controller` 跑起来才有意义，否则只会走 failsafe
+
+### 附带工具
+
+```bash
+# 探测 TX12 每个开关落在哪个 Axis/Button（会打印实时事件 + 汇总）
+/usr/bin/python3 scripts/probe_joy.py 60
+```
