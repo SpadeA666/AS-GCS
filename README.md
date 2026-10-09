@@ -1,6 +1,10 @@
-# AS-GCS
+<div align="center">
+  <img src="src/as_gcs/ui/icon.png" width="120" alt="AS 地面站">
+  <h1>AS 地面站</h1>
+  <p><b>无人机自主飞行系统</b> &nbsp;·&nbsp; PX4 Offboard 控制器 + Web 地面站</p>
+</div>
 
-**无人机自主飞行系统**：PX4 Offboard 控制器 + Web 地面站。
+---
 
 ```
 浏览器 ──WebSocket──> foxglove_bridge ──ROS──> 仿真 / PX4
