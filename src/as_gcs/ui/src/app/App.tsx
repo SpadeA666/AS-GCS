@@ -345,18 +345,22 @@ export default function App() {
   }, [cloudTopics]);
 
   /**
-   * 膨胀点云：
-   *   SUPER -> /fsm_node/rog_map/inf_occ
-   *   EGO   -> /grid_map/occupancy_inflate
-   * 两个规划器命名不一样，所以要依次匹配。
+   * 膨胀点云话题。
+   *
+   * ⚠ 两个规划器的膨胀话题**同时存在于话题列表里**（切规划器只是停节点，
+   *   话题名还会残留在 bridge 的频道表里）：
+   *     SUPER -> /fsm_node/rog_map/inf_occ
+   *     EGO   -> /drone_0_ego_planner_node/grid_map/occupancy_inflate
+   *
+   *   之前写的是“先找 inf_occ，再找 occupancy_inflate”，于是切到 EGO 后
+   *   依然命中残留的 inf_occ（没数据），图永远出不来。
+   *   现在按当前规划器优先，另一个只做兼容回退。
    */
-  const inflatedCloudTopic = useMemo(
-    () =>
-      cloudTopics.find((t) => t.includes("inf_occ")) ??
-      cloudTopics.find((t) => t.includes("occupancy_inflate")) ??
-      "",
-    [cloudTopics],
-  );
+  const inflatedCloudTopic = useMemo(() => {
+    const sup = cloudTopics.find((t) => t.includes("inf_occ"));
+    const ego = cloudTopics.find((t) => t.includes("occupancy_inflate"));
+    return planner === "ego" ? (ego ?? sup ?? "") : (sup ?? ego ?? "");
+  }, [cloudTopics, planner]);
 
   // 诊断：话题列表变化时把膨胀点云的选中结果打进日志。
   // 看不到图时能一眼分清是“话题没选上”还是“选上了但不渲染”。
