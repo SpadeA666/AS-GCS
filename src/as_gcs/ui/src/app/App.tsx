@@ -100,6 +100,10 @@ export default function App() {
   const [fenceMode, setFenceMode] = useState(false);
 
   const connRef = useRef<FoxgloveConnection | undefined>(undefined);
+  /** 指向 connect()，供切换规划器后触发重连用（connect 本身在 useCallback 里） */
+  const connectRef = useRef<(() => void) | undefined>(undefined);
+  /** 上一次已生效的规划器，用来判断 ready 通知是不是真的换了规划器 */
+  const plannerRef = useRef<Planner>("super");
   /** 连接代际号：旧连接的回调（尤其是 close）不允许再改 UI 状态 */
   const genRef = useRef(0);
   const tfRef = useRef(new TfBuffer());
@@ -423,8 +427,17 @@ export default function App() {
    * cleanup（退订）→ 重新订阅；而 SUPER 只在 replan 那一瞬间发一条 exp_traj，
    * 落在重订阅的窗口里就永远丢了 —— 表现就是“从来没显示过”。
    */
+  /**
+   * 期望轨迹话题：
+   *   SUPER -> /fsm_node/visualization/exp_traj（MarkerArray）
+   *   EGO   -> /drone_0_ego_planner_node/optimal_list（单个 Marker）
+   * 两个规划器命名不同，依次匹配。
+   */
   const expTrajTopic = useMemo(
-    () => topics.find((x) => x.topic.includes("visualization/exp_traj"))?.topic ?? "",
+    () =>
+      topics.find((x) => x.topic.includes("visualization/exp_traj"))?.topic ??
+      topics.find((x) => x.topic.includes("optimal_list"))?.topic ??
+      "",
     [topics],
   );
 
@@ -444,17 +457,26 @@ export default function App() {
     pushLog(`已订阅 ExpTraj: ${expTrajTopic}`);
     expTrajLoggedRef.current = false;
     return conn.subscribe(expTrajTopic, (msg) => {
-      const m = msg as {
-        markers?: {
-          type?: number;
-          points?: { x: number; y: number; z: number }[];
-          color?: { r: number; g: number; b: number; a: number };
-        }[];
+      // 两种来源结构不同：
+      //   SUPER -> MarkerArray，消息里有 markers[]
+      //   EGO   -> 单个 Marker，消息本身就是一条（有 points/type/color）
+      // 统一归一化成数组再走后面的解析。
+      type Mk = {
+        type?: number;
+        points?: { x: number; y: number; z: number }[];
+        color?: { r: number; g: number; b: number; a: number };
       };
-      if (!Array.isArray(m.markers)) return;
+      const m = msg as Mk & { markers?: Mk[] };
+      const markers = m.markers;
+      const list: Mk[] = Array.isArray(markers)
+        ? markers
+        : m.points
+          ? [{ type: m.type, points: m.points, color: m.color }]
+          : [];
+      if (list.length === 0) return;
       const out: number[] = [];
       let col: string | undefined;
-      for (const mk of m.markers) {
+      for (const mk of list) {
         // SUPER 的轨迹用的是 ARROW（ros1_adapter.hpp 里 line_list.type = Marker::ARROW），
         // 每个 marker 是一小段（points = [起点, 终点]）；航点是 SPHERE 不带线段。
         // 所以三种都要收：ARROW=0 / LINE_STRIP=4 / LINE_LIST=5。
@@ -491,7 +513,7 @@ export default function App() {
       if (!expTrajLoggedRef.current && out.length >= 6) {
         expTrajLoggedRef.current = true;
         pushLog(
-          `ExpTraj 收到有效轨迹：markers=${m.markers.length} 点数=${out.length / 3} 颜色=${col ?? "—"}`,
+          `ExpTraj 收到有效轨迹：markers=${list.length} 点数=${out.length / 3} 颜色=${col ?? "—"}`,
         );
       }
       // 关键：这里【不能做时间节流】。
@@ -537,6 +559,8 @@ export default function App() {
 
   const handlePlannerChange = useCallback(
     (p: Planner) => {
+      // 切换后要重连刷新话题列表，所以把 connect 挂到 ref 上供 planner_status 回调调用
+      connectRef.current = connect;
       // 真正切规划器要走网关：它会停掉旧节点、启新节点（十几秒），
       // 完成后通过 /gcs/planner_status 回推状态。这里只发请求，
       // 不要先 setPlanner —— 否则界面显示的“已切换”和实际不一致。
@@ -579,8 +603,18 @@ export default function App() {
       setPlannerStatus(d);
       const [st, who] = d.split(/\s+/);
       if (st === "ready" && (who === "ego" || who === "super")) {
-        setPlanner(who as Planner);
-        pushLog(`规划器已就绪: ${who.toUpperCase()}`);
+        if (plannerRef.current !== (who as Planner)) {
+          plannerRef.current = who as Planner;
+          setPlanner(who as Planner);
+          // 规划器一换，整套节点都换了，话题列表也就全变了。
+          // foxglove_bridge 不推连接后新增的话题（和它不推新增服务是同一回事），
+          // 所以必须重连一次，否则 EGO 的 occupancy_inflate / optimal_list
+          // 根本不会出现在 topics 里，界面就永远看不到膨胀点云和轨迹。
+          pushLog(`规划器已就绪: ${who.toUpperCase()}，刷新话题列表…`, "ok");
+          setTimeout(() => connectRef.current?.(), 600);
+        } else {
+          pushLog(`规划器已就绪: ${who.toUpperCase()}`);
+        }
       } else if (st === "switching") {
         pushLog(`规划器切换中: → ${(who ?? "").toUpperCase()}（约 10s）`);
       } else if (st === "failed") {
