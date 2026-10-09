@@ -15,7 +15,7 @@
 | **控制器** | `src/as_controller` | PX4 Offboard 接口封装 + 状态机：起飞、定点、规划器导航、视觉跟踪、投放机构 |
 | **地面站** | `src/as_gcs` | 浏览器访问的 Web 地面站：点云建图、打点飞行、安全区、目标跟随、遥控器接管 |
 
-规划器 **SUPER**（主）/ **EGO-Planner**（备选）；定位 **FAST-LIO**；雷达 **Livox Mid360**。
+规划器 **SUPER**（主）/ **EGO-Planner**（备选）；定位 **faster_lio**；雷达 **Livox Mid360**。
 
 > 本仓库只含这两个核心包。第三方依赖（mavros、foxglove_bridge、faster-lio、Livox 驱动、
 > SUPER 等）需要自行准备 —— 完整清单与来源见 **[docs/REPRODUCE.md](docs/REPRODUCE.md)**。

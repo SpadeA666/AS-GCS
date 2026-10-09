@@ -14,7 +14,7 @@
 | **控制器** | `as_controller` | 封装 PX4 Offboard 接口，提供起飞/定点/规划器导航/视觉跟踪等 API，以及状态机 |
 | **地面站** | `as_gcs` | Web 地面站（浏览器访问）：点云建图显示、打点飞行、安全区、目标跟随、遥控器接管 |
 
-规划器用 **SUPER**（主）和 **EGO-Planner**（备选）；定位用 **FAST-LIO**；雷达 **Livox Mid360**。
+规划器用 **SUPER**（主）和 **EGO-Planner**（备选）；定位用 **faster_lio**（包名，目录 `faster-lio`）；雷达 **Livox Mid360**。
 
 本仓库（AS-GCS）**只包含这两个核心包**。其余第三方依赖需要你自行准备，见第三节。
 
@@ -93,7 +93,7 @@ pip3 install empy==3.3.4 catkin_pkg rosdep rosdistro
 |---|---|---|
 | `Livox-SDK2` | Mid360 驱动所需的 SDK | github.com/Livox-SDK/Livox-SDK2 |
 | `livox_ros_driver2` | Mid360 的 ROS 驱动 | github.com/Livox-SDK/livox_ros_driver2 |
-| `faster-lio` | 激光雷达惯性里程计（定位） | github.com/gaoxiang12/faster-lio |
+| `faster-lio` | 激光雷达惯性里程计（定位）。**包名是 `faster_lio`**，启动方式 `roslaunch faster_lio mapping_mid360.launch` | github.com/gaoxiang12/faster-lio |
 | `foxglove_bridge` | 地面站的 WebSocket 桥 | github.com/foxglove/ros-foxglove-bridge |
 | `SUPER` | 主规划器（本仓库做了定制） | 见下方说明 |
 | `ego_planner` | 备选规划器 | github.com/ZJU-FAST-Lab/ego-planner |
