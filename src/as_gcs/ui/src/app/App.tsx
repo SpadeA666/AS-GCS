@@ -358,6 +358,23 @@ export default function App() {
     [cloudTopics],
   );
 
+  // 诊断：话题列表变化时把膨胀点云的选中结果打进日志。
+  // 看不到图时能一眼分清是“话题没选上”还是“选上了但不渲染”。
+  const inflLogRef = useRef("");
+  useEffect(() => {
+    const key = inflatedCloudTopic + "|" + cloudTopics.length;
+    if (key === inflLogRef.current) return;
+    inflLogRef.current = key;
+    if (inflatedCloudTopic) {
+      pushLog(`膨胀点云话题: ${inflatedCloudTopic}`, "ok");
+    } else {
+      pushLog(
+        `膨胀点云: 未找到话题（当前共 ${cloudTopics.length} 个点云话题：${cloudTopics.slice(0, 6).join(", ")}）`,
+        "warn",
+      );
+    }
+  }, [inflatedCloudTopic, cloudTopics, pushLog]);
+
   // ── 累积飞行轨迹（按位移过滤 + 限长，避免高频 setState）──
   useEffect(() => {
     if (!conn || !poseTopic) return;
