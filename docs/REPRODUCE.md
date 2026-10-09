@@ -508,11 +508,12 @@ const bool rpy_moving = (fabsf(_x_diff.update(x, dt_s)) > minimum_stick_change) 
 
 | 项 | EGO launch 里的原值 | 本项目约定 | 说明 |
 |---|---|---|---|
-| 轨迹输出 | `drone_0_planning/pos_cmd` | `/planning/pos_cmd` | ASNAV 订阅后者（SUPER 也发这个） |
+| 轨迹输出 | `drone_0_planning/pos_cmd` | **保持原样** | 前缀是有意设计，订阅方已按它改（见下节） |
 | 里程计输入 | `/Odomtry_highrate` | `/Odometry_highrate` | 原 launch 少了个 e，**确实是拼写错误** |
 | 点云输入 | `/octomap_` | `/octomap_point_cloud_centers` | 前者没有任何节点发布，**是笔误** |
 
 其中后两项（拼写与无效话题名）是**真错误**，直接改就行。
+轨迹输出那项别看错 —— 它和这两项**不是一类**。
 
 #### 💡 但 `drone_<id>_` 前缀是有意设计，不要删
 
@@ -525,15 +526,33 @@ const bool rpy_moving = (fabsf(_x_diff.update(x, dt_s)) > minimum_stick_change) 
 > 就能区分是哪台机的轨迹，不会串到一起。
 > 单机时看着多余，多机时是刚需。
 
-所以单机复现时你有两种选择：
+**本项目采用第 2 种**（2026-10-09 修正）：launch 保持
+`drone_$(arg drone_id)_planning/pos_cmd` 不动，**改 ASNAV 侧的订阅方**：
 
-1. **去掉前缀**（本项目单机验证采用这种做法）：把 launch 的 remap 改成
-   `planning/pos_cmd`，与 ASNAV / SUPER 对齐。简单，但将来上多机会撞名。
-2. **保留前缀，改订阅方**：把 ASNAV 改成订阅 `drone_<id>_planning/pos_cmd`。
-   为多机预留，但单机时也要传 drone_id。
+```cpp
+// src/as_controller/src/api_3d.cpp
+ ego_planner_pos_cmd_sub_   = nh_.subscribe("/drone_0_planning/pos_cmd", ...);  // EGO
+ super_planner_pos_cmd_sub_ = nh_.subscribe("/planning/pos_cmd", ...);          // SUPER
+```
 
-> **将来上多机集群前，记得改回第 2 种。** 现在这个无前缀的写法只是为了
-> 单机先把链路跑通。
+曾短暂用过第 1 种（把两边都对齐到 `/planning/pos_cmd`），**已回退**。
+回退原因不是“不好看”，而是它把两条轨迹通道合并了：
+
+- `ego_cmd_` 与 `super_cmd_` 内容**永远相同**，
+  `ego_cmd_received_` / `super_cmd_received_` **恒为 true**；
+- `navigationEgo` 与 `navigationSuper` 的差别只剩**控制律**，数据来源无法区分；
+- 一旦切换不干净（两个规划器同时在跑），两路轨迹往**同一个话题**上灌，
+  飞控收到的是混合指令 —— 而从话题层面**完全看不出来**。
+
+改完之后两条通道天然隔离：
+
+| 规划器 | 轨迹话题 |
+|---|---|
+| EGO | `/drone_0_planning/pos_cmd` |
+| SUPER | `/planning/pos_cmd` |
+
+> 所以要查“到底哪个规划器在跑”，`rostopic info` 分别看这两个话题就有答案 ——
+> 合并成一个话题之后就再也查不出来了。
 
 #### 膨胀点云
 

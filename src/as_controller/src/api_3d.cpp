@@ -12,7 +12,7 @@
  *  ║     School    : SWPU                                         ║
  *  ║     QQ        : 3402442153                                   ║
  *  ║                                                              ║
- *  ║     ✨ 欢迎交流讨论，有问题或建议欢迎随时联系！ ✨                 ║
+ *  ║     ✨ 欢迎交流讨论，有问题或建议欢迎随时联系！ ✨                  ║
  *  ║     Feel free to reach out for questions or suggestions!     ║
  *  ║                                                              ║
  *  ╚══════════════════════════════════════════════════════════════╝
@@ -80,8 +80,24 @@ ASNAV::ASNAV(ros::NodeHandle& nh) : nh_(nh)
     mavros_local_velocity_sub_ = nh_.subscribe("/iris_0/mavros/local_position/velocity_local", 10, &ASNAV::mavros_local_velocity_cb, this);
     set_mode_client_ = nh_.serviceClient<mavros_msgs::SetMode>("/iris_0/mavros/set_mode");
     mavros_cmd_command_client_ = nh_.serviceClient<mavros_msgs::CommandLong>("/iris_0/mavros/cmd/command");
-    ego_planner_pos_cmd_sub_ = nh_.subscribe("/planning/pos_cmd", 10, &ASNAV::ego_planner_pos_cmd_cb, this);
-    super_planner_pos_cmd_sub_ = nh_.subscribe("/planning/pos_cmd", 10, &ASNAV::super_planner_pos_cmd_cb, this);
+    // ⚠ 两条轨迹话题【必须分开】，别再合并：
+    //     EGO   -> /drone_0_planning/pos_cmd    （EGO 的既定命名，带 drone_<id>_ 前缀）
+    //     SUPER -> /planning/pos_cmd
+    //
+    // 2026-10-09 之前的版本把 EGO 也写成了 /planning/pos_cmd（而 navigationEgoRviz
+    // 的注释里还写着 /drone_0_planning/pos_cmd，代码和注释自相矛盾），后果是：
+    //   · 两个回调永久同时触发，ego_cmd_ 与 super_cmd_ 内容完全一样；
+    //   · ego_cmd_received_ / super_cmd_received_ 恒为 true，
+    //     navigationEgo 与 navigationSuper 的差别只剩控制律，无法区分数据来源；
+    //   · 一旦切换不干净（两个规划器同时在跑），两路轨迹就往同一个话题上灌，
+    //     飞控收到的是混合指令 —— 而且从话题层面完全看不出来。
+    //
+    // drone_<id>_ 前缀同时也是多机集群的基础（EGO 自带的 launch 都是这个写法），
+    // 别为了“好接通”把它去掉。
+    ego_planner_pos_cmd_sub_ =
+        nh_.subscribe("/drone_0_planning/pos_cmd", 10, &ASNAV::ego_planner_pos_cmd_cb, this);
+    super_planner_pos_cmd_sub_ =
+        nh_.subscribe("/planning/pos_cmd", 10, &ASNAV::super_planner_pos_cmd_cb, this);
     mavros_setpoint_raw_local_pub_ = nh_.advertise<mavros_msgs::PositionTarget>("/iris_0/mavros/setpoint_raw/local", 10);
     goal_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal", 10);
     super_goal_pub_ = nh_.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal", 10);
@@ -1479,11 +1495,14 @@ void ASNAV::reset_target()
     ROS_INFO("指令对象已重置，消除残留数据");
 }
 
-// 声明“这是一个新目标”：让 navigationSuper 下次调用时重新发布 goal。
+// 声明“这是一个新目标”：让 navigationSuper / navigationEgo 下次调用时重新发布 goal。
 // 不加这个，飞机飞向 A 的中途改打 B，goal 不会重发，B 永远不会生效。
+// 2026-10-09：以前只复位了 super_goal_sent_，EGO 的 goal_sent_ 漏了 ——
+// 于是 EGO 模式下“未到达就改点”同样石沉大海（和 SUPER 当初那个病一模一样）。
 void ASNAV::resetSuperGoal()
 {
     super_goal_sent_ = false;
+    goal_sent_ = false;
 }
 
 // 三通道 PWM 舵机控制接口（复刻 lib_pwm_control，支持 M5/M6/M7）
