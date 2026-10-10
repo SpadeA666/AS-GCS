@@ -112,6 +112,27 @@ ASNAV::ASNAV(ros::NodeHandle& nh) : nh_(nh)
     super_rviz_mode_ = false;
     current_position = geometry_msgs::Point();
     target_position = mavros_msgs::PositionTarget();
+    // ⚠ 坐标系与掩码必须显式初始化！
+    // ROS 消息默认构造会把 coordinate_frame 置 0，而 0 在 MAVLink 里是
+    // MAV_FRAME_GLOBAL —— SET_POSITION_TARGET_LOCAL_NED 不接受它，PX4 会把
+    // 整条 setpoint 丢掉并打印 "coordinate frame 0 unsupported"。
+    //
+    // 后果链条（实测）：setpoint 全部无效 → offboard_available=false
+    //   → offboard_control_signal_lost=true
+    //   → 从遥控器拨杆切 OFFBOARD 永远失败（就是“c 最高档切不过去”）。
+    //   同时 commander 会报 "Switching to Position is currently not available"。
+    //
+    // 平时看不出来的原因：takeoff() → position() 里会把这两项重新赋成正确值，
+    // 只有“重启网关后、起飞前就切 OFFBOARD”这条路径才会撞上。
+    target_position.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
+    target_position.type_mask = mavros_msgs::PositionTarget::IGNORE_VX |
+                                mavros_msgs::PositionTarget::IGNORE_VY |
+                                mavros_msgs::PositionTarget::IGNORE_VZ |
+                                mavros_msgs::PositionTarget::IGNORE_AFX |
+                                mavros_msgs::PositionTarget::IGNORE_AFY |
+                                mavros_msgs::PositionTarget::IGNORE_AFZ |
+                                mavros_msgs::PositionTarget::FORCE |
+                                mavros_msgs::PositionTarget::IGNORE_YAW_RATE;
     start_planning_time = 0;
     finish_planning_time = 0;
 
