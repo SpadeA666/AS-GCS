@@ -54,7 +54,7 @@ int main(int argc, char** argv)
             break;
 
         case 1:  
-            if (uav.navigationSuperContourRviz(0))
+            if (uav.navigationSuperRviz(0))
             {
                 ROS_WARN("完成！！！");
                 mission_num = 2;

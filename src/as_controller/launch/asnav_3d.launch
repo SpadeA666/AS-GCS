@@ -19,12 +19,12 @@
         <param name="zpro_accel_ff_gain"     value="0.2"  type="double"/>  <!-- 0=关, 0.5=半量, 1=全量 -->
 
         <!-- navigationSuper 控制器参数 -->
-        <param name="super_kp_outer"     type="double" value="1.0" />   <!-- Kp: 位置误差→速度修正 -->
-        <param name="super_kv_outer"     type="double" value="0.0" />   <!-- Kv: 速度误差阻尼（核心）; 2026-09-30: 0.8→0.3, 抑制仿真下速度阻尼振荡 -->
-        <param name="super_ki_outer"     type="double" value="0.0" />  <!-- Ki: 位置误差积分 -->
-        <param name="super_ff_gain"      type="double" value="0.5" />  <!-- 速度前馈系数XY (2026-10-05; 0.5=fuel_nav等效) -->
+        <param name="super_kp_outer"     type="double" value="2.6" />   <!-- Kp: 位置误差→速度修正 -->
+        <param name="super_kv_outer"     type="double" value="2.2" />   <!-- Kv: 速度误差阻尼（核心）; 2026-09-30: 0.8→0.3, 抑制仿真下速度阻尼振荡 -->
+        <param name="super_ki_outer"     type="double" value="0.05" />  <!-- Ki: 位置误差积分 -->
+        <param name="super_ff_gain"      type="double" value="1.0" />  <!-- 速度前馈系数XY (2026-10-05; 0.5=fuel_nav等效) -->
         <param name="super_ff_gain_z"    type="double" value="0.0" />  <!-- 速度前馈系数Z  (2026-10-05; 0=fuel_nav等效) -->
-        <param name="super_max_vel"      type="double" value="1.0" />  <!-- XY 速度限幅 (m/s) -->
+        <param name="super_max_vel"      type="double" value="2.5" />  <!-- XY 速度限幅 (m/s) -->
         <param name="super_max_vel_z"    type="double" value="1.0" />   <!-- Z  速度限幅 (m/s) -->
         <param name="super_max_integral" type="double" value="0.5" />   <!-- 积分抗饱和 -->
         <param name="super_traj_timeout" type="double" value="0.5" />   <!-- SUPER断联超时→悬停 (对齐 ruikang traj_timeout=0.5, 换点空窗不误触) -->
@@ -44,14 +44,14 @@
         <param name="super_contour_min_spd" type="double" value="0.15" />
 
         <!-- 第一梯队：三段式增益 -->
-        <param name="ego_kp_outer"     type="double" value="1.4" />   <!-- Kp: 位置误差→速度修正 -->
-        <param name="ego_kv_outer"     type="double" value="1.5" />   <!-- Kv: 速度误差阻尼（核心） -->
-        <param name="ego_ki_outer"     type="double" value="0.3" />   <!-- Ki: 位置误差积分 -->
-        <param name="ego_ff_gain"      type="double" value="0.5" />   <!-- 速度前馈系数XY (2026-10-05; 0.5=fuel_nav等效) -->
+        <param name="ego_kp_outer"     type="double" value="2.6" />   <!-- Kp: 位置误差→速度修正 -->
+        <param name="ego_kv_outer"     type="double" value="2.2" />   <!-- Kv: 速度误差阻尼（核心） -->
+        <param name="ego_ki_outer"     type="double" value="0.05" />   <!-- Ki: 位置误差积分 -->
+        <param name="ego_ff_gain"      type="double" value="1.0" />   <!-- 速度前馈系数XY (2026-10-05; 0.5=fuel_nav等效) -->
         <param name="ego_ff_gain_z"    type="double" value="0.0" />   <!-- 速度前馈系数Z  (2026-10-05; 0=fuel_nav等效) -->
 
         <!-- 限幅 -->
-        <param name="ego_max_vel"      type="double" value="1.1" />   <!-- = max_vel ，给修正留空间 -->
+        <param name="ego_max_vel"      type="double" value="1.8" />   <!-- = max_vel ，给修正留空间 -->
         <param name="ego_max_vel_z"    type="double" value="1.0" />   <!-- Z 速度限幅 (2026-10-05) -->
         <param name="ego_max_integral" type="double" value="0.5" />   <!-- 积分抗饱和 -->
 
